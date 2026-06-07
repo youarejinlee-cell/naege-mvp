@@ -51,7 +51,11 @@ const neutralMoods: Array<{ key: Mood; label: string }> = [
   { key: "indifferent", label: "😶 무덤덤함" },
   { key: "curious", label: "🧐 궁금함" },
   { key: "accepting", label: "🤲 받아들임" },
-  { key: "reflective", label: "🪞 반성함" }
+  { key: "reflective", label: "🪞 반성함" },
+  { key: "envious", label: "🫧 부러움" },
+  { key: "instructive", label: "📌 교훈적임" },
+  { key: "difficult", label: "🧩 어려움" },
+  { key: "blank", label: "🫠 멍함" }
 ];
 
 const negativeMoods: Array<{ key: Mood; label: string }> = [
@@ -61,7 +65,6 @@ const negativeMoods: Array<{ key: Mood; label: string }> = [
   { key: "sad", label: "😔 가라앉음" },
   { key: "depressed", label: "🌧️ 우울함" },
   { key: "angry", label: "😤 날카로움" },
-  { key: "blank", label: "🫠 멍함" },
   { key: "irritated", label: "😒 짜증남" },
   { key: "jealous", label: "🫣 질투" },
   { key: "prideHurt", label: "😣 자존심상함" },
@@ -82,26 +85,21 @@ function randomPlaceholder() {
 const initialMap: Record<string, number> = {
   ㄱ: 0, ㄲ: 1, ㄴ: 2, ㄷ: 3, ㄸ: 4, ㄹ: 5, ㅁ: 6, ㅂ: 7, ㅃ: 8, ㅅ: 9, ㅆ: 10, ㅇ: 11, ㅈ: 12, ㅉ: 13, ㅊ: 14, ㅋ: 15, ㅌ: 16, ㅍ: 17, ㅎ: 18
 };
-
 const medialMap: Record<string, number> = {
   ㅏ: 0, ㅐ: 1, ㅑ: 2, ㅒ: 3, ㅓ: 4, ㅔ: 5, ㅕ: 6, ㅖ: 7, ㅗ: 8, ㅘ: 9, ㅙ: 10, ㅚ: 11, ㅛ: 12, ㅜ: 13, ㅝ: 14, ㅞ: 15, ㅟ: 16, ㅠ: 17, ㅡ: 18, ㅢ: 19, ㅣ: 20
 };
-
 const finalMap: Record<string, number> = {
   ㄱ: 1, ㄲ: 2, ㄳ: 3, ㄴ: 4, ㄵ: 5, ㄶ: 6, ㄷ: 7, ㄹ: 8, ㄺ: 9, ㄻ: 10, ㄼ: 11, ㄽ: 12, ㄾ: 13, ㄿ: 14, ㅀ: 15, ㅁ: 16, ㅂ: 17, ㅄ: 18, ㅅ: 19, ㅆ: 20, ㅇ: 21, ㅈ: 22, ㅊ: 23, ㅋ: 24, ㅌ: 25, ㅍ: 26, ㅎ: 27
 };
-
-const vowelPairs: Record<string, string> = {
-  "ㅗㅏ": "ㅘ", "ㅗㅐ": "ㅙ", "ㅗㅣ": "ㅚ", "ㅜㅓ": "ㅝ", "ㅜㅔ": "ㅞ", "ㅜㅣ": "ㅟ", "ㅡㅣ": "ㅢ"
-};
-
-const finalPairs: Record<string, string> = {
-  "ㄱㅅ": "ㄳ", "ㄴㅈ": "ㄵ", "ㄴㅎ": "ㄶ", "ㄹㄱ": "ㄺ", "ㄹㅁ": "ㄻ", "ㄹㅂ": "ㄼ", "ㄹㅅ": "ㄽ", "ㄹㅌ": "ㄾ", "ㄹㅍ": "ㄿ", "ㄹㅎ": "ㅀ", "ㅂㅅ": "ㅄ"
-};
-
 const initials = ["ㄱ", "ㄲ", "ㄴ", "ㄷ", "ㄸ", "ㄹ", "ㅁ", "ㅂ", "ㅃ", "ㅅ", "ㅆ", "ㅇ", "ㅈ", "ㅉ", "ㅊ", "ㅋ", "ㅌ", "ㅍ", "ㅎ"];
 const medials = ["ㅏ", "ㅐ", "ㅑ", "ㅒ", "ㅓ", "ㅔ", "ㅕ", "ㅖ", "ㅗ", "ㅘ", "ㅙ", "ㅚ", "ㅛ", "ㅜ", "ㅝ", "ㅞ", "ㅟ", "ㅠ", "ㅡ", "ㅢ", "ㅣ"];
 const finals = ["", "ㄱ", "ㄲ", "ㄳ", "ㄴ", "ㄵ", "ㄶ", "ㄷ", "ㄹ", "ㄺ", "ㄻ", "ㄼ", "ㄽ", "ㄾ", "ㄿ", "ㅀ", "ㅁ", "ㅂ", "ㅄ", "ㅅ", "ㅆ", "ㅇ", "ㅈ", "ㅊ", "ㅋ", "ㅌ", "ㅍ", "ㅎ"];
+const vowelPairs: Record<string, string> = {
+  "ㅗㅏ": "ㅘ", "ㅗㅐ": "ㅙ", "ㅗㅣ": "ㅚ", "ㅜㅓ": "ㅝ", "ㅜㅔ": "ㅞ", "ㅜㅣ": "ㅟ", "ㅡㅣ": "ㅢ"
+};
+const finalPairs: Record<string, string> = {
+  "ㄱㅅ": "ㄳ", "ㄴㅈ": "ㄵ", "ㄴㅎ": "ㄶ", "ㄹㄱ": "ㄺ", "ㄹㅁ": "ㄻ", "ㄹㅂ": "ㄼ", "ㄹㅅ": "ㄽ", "ㄹㅌ": "ㄾ", "ㄹㅍ": "ㄿ", "ㄹㅎ": "ㅀ", "ㅂㅅ": "ㅄ"
+};
 const splitVowels: Record<string, string> = {
   ㅘ: "ㅗㅏ", ㅙ: "ㅗㅐ", ㅚ: "ㅗㅣ", ㅝ: "ㅜㅓ", ㅞ: "ㅜㅔ", ㅟ: "ㅜㅣ", ㅢ: "ㅡㅣ"
 };
@@ -110,18 +108,16 @@ const splitFinals: Record<string, string> = {
 };
 
 function decomposeHangul(input: string) {
-  return [...input.normalize("NFC")]
-    .map((char) => {
-      const code = char.charCodeAt(0);
-      if (code < 0xac00 || code > 0xd7a3) return char;
+  return [...input.normalize("NFC")].map((char) => {
+    const code = char.charCodeAt(0);
+    if (code < 0xac00 || code > 0xd7a3) return char;
 
-      const offset = code - 0xac00;
-      const initial = initials[Math.floor(offset / 588)];
-      const medial = medials[Math.floor((offset % 588) / 28)];
-      const final = finals[offset % 28];
-      return `${initial}${splitVowels[medial] || medial}${final ? splitFinals[final] || final : ""}`;
-    })
-    .join("");
+    const offset = code - 0xac00;
+    const initial = initials[Math.floor(offset / 588)];
+    const medial = medials[Math.floor((offset % 588) / 28)];
+    const final = finals[offset % 28];
+    return `${initial}${splitVowels[medial] || medial}${final ? splitFinals[final] || final : ""}`;
+  }).join("");
 }
 
 function composeHangul(input: string) {
@@ -156,8 +152,7 @@ function composeHangul(input: string) {
       index += 1;
     }
 
-    const code = 0xac00 + (initialMap[initial] * 21 + medialMap[medial]) * 28 + (final ? finalMap[final] : 0);
-    result += String.fromCharCode(code);
+    result += String.fromCharCode(0xac00 + (initialMap[initial] * 21 + medialMap[medial]) * 28 + (final ? finalMap[final] : 0));
     index += 1;
   }
 
@@ -167,8 +162,8 @@ function composeHangul(input: string) {
 export function CaptureScreen({ onAddEntry, getNow = () => new Date(), energyColorMode }: Props) {
   const theme = useAppTheme();
   const energyLevels = energyPalettes[energyColorMode].levels;
+  const inputRef = useRef<TextInput | null>(null);
   const textDraft = useRef("");
-  const [inputText, setInputText] = useState("");
   const [hasText, setHasText] = useState(false);
   const [mood, setMood] = useState<Mood | null>(null);
   const [energy, setEnergy] = useState<number | null>(null);
@@ -181,7 +176,9 @@ export function CaptureScreen({ onAddEntry, getNow = () => new Date(), energyCol
   const updateDraft = (next: string) => {
     const composed = composeHangul(next);
     textDraft.current = composed;
-    setInputText(composed);
+    if (composed !== next) {
+      requestAnimationFrame(() => inputRef.current?.setNativeProps({ text: composed }));
+    }
     const nextHasText = Boolean(composed.trim());
     setHasText((current) => (current === nextHasText ? current : nextHasText));
   };
@@ -189,7 +186,7 @@ export function CaptureScreen({ onAddEntry, getNow = () => new Date(), energyCol
   const replaceInputText = (next: string) => {
     const composed = composeHangul(next);
     textDraft.current = composed;
-    setInputText(composed);
+    inputRef.current?.setNativeProps({ text: composed });
     setHasText(Boolean(composed.trim()));
   };
 
@@ -200,9 +197,9 @@ export function CaptureScreen({ onAddEntry, getNow = () => new Date(), energyCol
       lead={"지금 이 순간의 생각과 감정을 솔직하게 남겨봐.\n그 기록이 미래의 너에게 의미로 돌아올 거야."}
     >
       <TextInput
+        ref={inputRef}
         multiline
         placeholder={placeholder}
-        value={inputText}
         onChangeText={updateDraft}
         style={styles.textarea}
         textAlignVertical="top"

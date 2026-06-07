@@ -58,10 +58,13 @@ create table if not exists public.notification_settings (
   user_id uuid primary key references auth.users(id) on delete cascade,
   enabled boolean not null default false,
   notifications_enabled boolean not null default false,
+  schedule_mode text not null default 'interval' check (schedule_mode in ('interval', 'fixed')),
   start_time time not null default '09:30',
-  interval_minutes integer not null default 120 check (interval_minutes between 15 and 360),
+  interval_minutes integer not null default 120 check (interval_minutes between 10 and 120),
   dnd_start time not null default '22:30',
   dnd_end time not null default '08:00',
+  weekdays integer[] not null default array[1,2,3,4,5,6,7],
+  fixed_times text[] not null default array['10:00'],
   timezone text not null default 'Asia/Seoul',
   updated_at timestamptz not null default now()
 );
@@ -97,6 +100,14 @@ alter table public.letters add column if not exists summary_json jsonb not null 
 alter table public.letters add column if not exists model text;
 alter table public.letters add column if not exists prompt_version text;
 alter table public.letters add column if not exists updated_at timestamptz not null default now();
+
+alter table public.notification_settings add column if not exists schedule_mode text not null default 'interval';
+alter table public.notification_settings add column if not exists weekdays integer[] not null default array[1,2,3,4,5,6,7];
+alter table public.notification_settings add column if not exists fixed_times text[] not null default array['10:00'];
+alter table public.notification_settings drop constraint if exists notification_settings_interval_minutes_check;
+alter table public.notification_settings
+  add constraint notification_settings_interval_minutes_check
+  check (interval_minutes between 10 and 120);
 
 create index if not exists entries_user_created_at_idx on public.entries (user_id, created_at desc);
 create index if not exists letters_user_delivered_at_idx on public.letters (user_id, delivered_at desc);
@@ -206,6 +217,11 @@ on public.notification_settings for update
 using ((select auth.uid()) = user_id)
 with check ((select auth.uid()) = user_id);
 
+drop policy if exists "Users can delete own notification settings" on public.notification_settings;
+create policy "Users can delete own notification settings"
+on public.notification_settings for delete
+using ((select auth.uid()) = user_id);
+
 drop policy if exists "Users can read own push tokens" on public.push_tokens;
 create policy "Users can read own push tokens"
 on public.push_tokens for select
@@ -242,3 +258,8 @@ create policy "Users can update own app settings"
 on public.app_settings for update
 using ((select auth.uid()) = user_id)
 with check ((select auth.uid()) = user_id);
+
+drop policy if exists "Users can delete own app settings" on public.app_settings;
+create policy "Users can delete own app settings"
+on public.app_settings for delete
+using ((select auth.uid()) = user_id);

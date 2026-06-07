@@ -44,6 +44,9 @@ const moodLabels: Record<Mood, string> = {
   curious: "🧐 궁금함",
   accepting: "🤲 받아들임",
   reflective: "🪞 반성함",
+  envious: "🫧 부러움",
+  instructive: "📌 교훈적임",
+  difficult: "🧩 어려움",
   anxious: "😟 불안함",
   worried: "😥 걱정됨",
   tired: "😮‍💨 피곤함",
@@ -59,8 +62,9 @@ const moodLabels: Record<Mood, string> = {
 };
 
 function dateKey(value: string | Date) {
+  if (typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value)) return value;
   const date = typeof value === "string" ? new Date(value) : value;
-  return date.toISOString().slice(0, 10);
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
 }
 
 function monthKey(date: Date) {

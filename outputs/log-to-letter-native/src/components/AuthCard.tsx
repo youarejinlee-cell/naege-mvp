@@ -1,55 +1,49 @@
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { Image, Pressable, StyleSheet, Text, View } from "react-native";
 import { User } from "@supabase/supabase-js";
-import { getGoogleRedirectUri, getNativeRedirectUri, getStandaloneRedirectUri, isSupabaseConfigured } from "../lib/supabase";
+import { isSupabaseConfigured } from "../lib/supabase";
 import { useAppTheme } from "../lib/theme";
 
 type Props = {
   user: User | null;
   loading?: boolean;
   error?: string | null;
-  syncStatus?: string | null;
   onGoogleLogin: () => void;
-  onSignOut: () => void;
-  onSync?: () => void;
 };
 
-export function AuthCard({ user, loading, error, syncStatus, onGoogleLogin, onSignOut, onSync }: Props) {
+export function AuthCard({ user, loading, error, onGoogleLogin }: Props) {
   const theme = useAppTheme();
   const displayName = user?.user_metadata?.full_name || user?.user_metadata?.name || user?.email?.split("@")[0] || "Log to Letter";
-  const expoGoRedirectUri = getNativeRedirectUri();
-  const standaloneRedirectUri = getStandaloneRedirectUri();
-  const googleRedirectUri = getGoogleRedirectUri();
+  const avatarUrl = user?.user_metadata?.avatar_url || user?.user_metadata?.picture;
 
   return (
     <View style={[styles.card, { borderBottomColor: theme.border, backgroundColor: theme.page }]}>
-      <Text style={styles.label}>계정</Text>
       {user ? (
-        <>
-          <Text style={styles.title}>Profile</Text>
-          <Text style={styles.text}>{displayName}</Text>
-          <Text style={[styles.sub, { color: theme.tint }]}>{user.email || "Google 계정"}</Text>
-          {syncStatus ? <Text style={styles.syncStatus}>서버 동기화: {syncStatus}</Text> : null}
-          {error ? <Text style={styles.error}>{error}</Text> : null}
-          {onSync ? (
-            <Pressable style={styles.textButton} onPress={onSync}>
-              <Text style={[styles.textButtonLabel, { color: theme.tint }]}>지금 동기화</Text>
-            </Pressable>
-          ) : null}
-          <Pressable style={styles.textButton} onPress={onSignOut}>
-            <Text style={[styles.textButtonLabel, { color: theme.tint }]}>로그아웃</Text>
-          </Pressable>
-        </>
+        <View style={styles.profileRow}>
+          {avatarUrl ? (
+            <Image source={{ uri: avatarUrl }} style={styles.avatar} />
+          ) : (
+            <View style={[styles.avatarFallback, { backgroundColor: theme.soft }]}>
+              <Text style={[styles.avatarText, { color: theme.tint }]}>{displayName.slice(0, 1)}</Text>
+            </View>
+          )}
+          <View style={styles.profileText}>
+            <Text style={styles.label}>계정</Text>
+            <Text style={styles.title}>{displayName}</Text>
+          </View>
+        </View>
       ) : (
         <>
+          <Text style={styles.label}>계정</Text>
           <Text style={styles.title}>계정 연결</Text>
           <Text style={styles.text}>
-            {isSupabaseConfigured ? "Google 계정으로 연결할 수 있어. Expo Go가 아니라 개발 빌드에서 테스트할게." : "Supabase 설정을 넣으면 Google 로그인을 쓸 수 있어."}
+            {isSupabaseConfigured ? "Google 계정으로 연결할 수 있어." : "Supabase 설정을 넣으면 Google 로그인을 쓸 수 있어."}
           </Text>
-          <Text style={styles.redirect}>Google 로그인 Redirect URI: {googleRedirectUri}</Text>
-          <Text style={styles.redirect}>Expo Go 참고 URI: {expoGoRedirectUri}</Text>
-          <Text style={styles.redirect}>출시 앱 URI: {standaloneRedirectUri}</Text>
           {error ? <Text style={styles.error}>{error}</Text> : null}
-          <Pressable disabled={!isSupabaseConfigured || loading} style={[styles.button, { backgroundColor: theme.tint }, (!isSupabaseConfigured || loading) && styles.disabled]} onPress={onGoogleLogin}>
+          <Pressable
+            disabled={!isSupabaseConfigured || loading}
+            style={[styles.button, { backgroundColor: theme.tint }, (!isSupabaseConfigured || loading) && styles.disabled]}
+            onPress={onGoogleLogin}
+          >
             <Text style={styles.buttonLabel}>{loading ? "연결 중" : "Google로 계속하기"}</Text>
           </Pressable>
         </>
@@ -60,11 +54,36 @@ export function AuthCard({ user, loading, error, syncStatus, onGoogleLogin, onSi
 
 const styles = StyleSheet.create({
   card: {
-    gap: 7,
+    gap: 8,
     padding: 14,
     borderBottomWidth: 1,
     borderBottomColor: "#dfe8da",
     backgroundColor: "#fbfdf8"
+  },
+  profileRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10
+  },
+  avatar: {
+    width: 42,
+    height: 42,
+    borderRadius: 999
+  },
+  avatarFallback: {
+    width: 42,
+    height: 42,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: 999
+  },
+  avatarText: {
+    fontSize: 18,
+    fontWeight: "900"
+  },
+  profileText: {
+    flex: 1,
+    gap: 3
   },
   label: {
     color: "#657064",
@@ -81,23 +100,8 @@ const styles = StyleSheet.create({
     fontSize: 13,
     lineHeight: 18
   },
-  sub: {
-    color: "#2f8f54",
-    fontSize: 12,
-    fontWeight: "800"
-  },
-  redirect: {
-    color: "#657064",
-    fontSize: 11,
-    lineHeight: 16
-  },
   error: {
     color: "#d92d20",
-    fontSize: 12,
-    fontWeight: "800"
-  },
-  syncStatus: {
-    color: "#657064",
     fontSize: 12,
     fontWeight: "800"
   },
@@ -113,14 +117,6 @@ const styles = StyleSheet.create({
   },
   buttonLabel: {
     color: "#fff",
-    fontWeight: "900"
-  },
-  textButton: {
-    alignSelf: "flex-start",
-    paddingVertical: 6
-  },
-  textButtonLabel: {
-    color: "#2f8f54",
     fontWeight: "900"
   }
 });

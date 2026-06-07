@@ -1,8 +1,8 @@
 import { Pressable, StyleSheet, Text, View } from "react-native";
-import { isDevelopmentVariant } from "../lib/appVariant";
+import { canUseDevTools } from "../lib/appVariant";
 import { useAppTheme } from "../lib/theme";
 
-export type TabKey = "capture" | "calendar" | "inbox" | "settings" | "appSettings" | "dev";
+export type TabKey = "capture" | "calendar" | "inbox" | "settings" | "account" | "appSettings" | "guide" | "dev";
 
 type Props = {
   active: TabKey;
@@ -19,7 +19,7 @@ const tabs: Array<{ key: TabKey; label: string; icon: string }> = [
 
 export function BottomTabs({ active, onChange }: Props) {
   const theme = useAppTheme();
-  const visibleTabs = isDevelopmentVariant ? tabs : tabs.filter((tab) => tab.key !== "dev");
+  const visibleTabs = canUseDevTools ? tabs : tabs.filter((tab) => tab.key !== "dev");
 
   return (
     <View style={[styles.wrap, { borderTopColor: theme.border, backgroundColor: theme.page }]}>

@@ -19,6 +19,9 @@ export type Mood =
   | "curious"
   | "accepting"
   | "reflective"
+  | "envious"
+  | "instructive"
+  | "difficult"
   | "worried"
   | "tired"
   | "sad"
@@ -51,15 +54,19 @@ export type Letter = {
 
 export type NotificationSettings = {
   enabled: boolean;
+  scheduleMode: "interval" | "fixed";
   startTime: string;
   dndStart: string;
   dndEnd: string;
   intervalMinutes: number;
+  weekdays: number[];
+  fixedTimes: string[];
 };
 
 export type ColorTheme = "red" | "yellow" | "green" | "blue";
 export type CalendarEnergyMode = "first" | "last" | "most";
 export type EnergyColorMode = "soft" | "vivid";
+export type LetterPaperStyle = "plain" | "themeBorder" | "clover" | "cloudTitle";
 
 export type AppState = {
   entries: Entry[];
@@ -68,5 +75,6 @@ export type AppState = {
   theme: ColorTheme;
   energyColorMode: EnergyColorMode;
   calendarEnergyMode: CalendarEnergyMode;
+  letterPaperStyle: LetterPaperStyle;
   testToday?: string;
 };

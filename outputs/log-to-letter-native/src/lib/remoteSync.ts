@@ -1,6 +1,7 @@
 import { User } from "@supabase/supabase-js";
 import { AppState, Entry, Letter, Mood, NotificationSettings } from "../types/domain";
 import { createId, isUuid } from "./ids";
+import { normalizeLetterPaperStyle } from "./storage";
 import { supabase } from "./supabase";
 
 type EntryRow = {
@@ -24,10 +25,13 @@ type LetterRow = {
 
 type NotificationSettingsRow = {
   enabled: boolean;
+  schedule_mode?: "interval" | "fixed" | null;
   start_time: string;
   interval_minutes: number;
   dnd_start: string;
   dnd_end: string;
+  weekdays?: number[] | null;
+  fixed_times?: string[] | null;
 };
 
 type AppSettingsRow = {
@@ -35,8 +39,13 @@ type AppSettingsRow = {
     theme?: AppState["theme"];
     energyColorMode?: AppState["energyColorMode"];
     calendarEnergyMode?: AppState["calendarEnergyMode"];
+    letterPaperStyle?: AppState["letterPaperStyle"];
   } | null;
 };
+
+const MIN_INTERVAL_MINUTES = 10;
+const MAX_INTERVAL_MINUTES = 120;
+const INTERVAL_STEP_MINUTES = 5;
 
 function dateKey(value: string | Date) {
   const date = typeof value === "string" ? new Date(value) : value;
@@ -114,15 +123,24 @@ function rowToLetter(row: LetterRow): Letter {
   };
 }
 
+function normalizeIntervalMinutes(value: number) {
+  const clamped = Math.max(MIN_INTERVAL_MINUTES, Math.min(MAX_INTERVAL_MINUTES, Number(value) || MAX_INTERVAL_MINUTES));
+  return Math.round((clamped - MIN_INTERVAL_MINUTES) / INTERVAL_STEP_MINUTES) * INTERVAL_STEP_MINUTES + MIN_INTERVAL_MINUTES;
+}
+
 function settingsToRow(userId: string, settings: NotificationSettings) {
+  const intervalMinutes = normalizeIntervalMinutes(settings.intervalMinutes);
   return {
     user_id: userId,
     enabled: settings.enabled,
     notifications_enabled: settings.enabled,
+    schedule_mode: settings.scheduleMode || "interval",
     start_time: settings.startTime,
-    interval_minutes: settings.intervalMinutes,
+    interval_minutes: intervalMinutes,
     dnd_start: settings.dndStart,
     dnd_end: settings.dndEnd,
+    weekdays: settings.weekdays?.length ? settings.weekdays : [1, 2, 3, 4, 5, 6, 7],
+    fixed_times: settings.fixedTimes?.length ? settings.fixedTimes : ["10:00"],
     timezone: "Asia/Seoul",
     updated_at: new Date().toISOString()
   };
@@ -131,17 +149,21 @@ function settingsToRow(userId: string, settings: NotificationSettings) {
 function rowToSettings(row: NotificationSettingsRow): NotificationSettings {
   return {
     enabled: row.enabled,
+    scheduleMode: row.schedule_mode || "interval",
     startTime: row.start_time.slice(0, 5),
-    intervalMinutes: row.interval_minutes,
+    intervalMinutes: normalizeIntervalMinutes(row.interval_minutes),
     dndStart: row.dnd_start.slice(0, 5),
-    dndEnd: row.dnd_end.slice(0, 5)
+    dndEnd: row.dnd_end.slice(0, 5),
+    weekdays: row.weekdays?.length ? row.weekdays : [1, 2, 3, 4, 5, 6, 7],
+    fixedTimes: row.fixed_times?.length ? row.fixed_times : ["10:00"]
   };
 }
 
 export function normalizeStateIds(state: AppState): AppState {
   return {
     ...state,
-    entries: normalizeEntries(state.entries)
+    entries: normalizeEntries(state.entries),
+    letterPaperStyle: normalizeLetterPaperStyle(state.letterPaperStyle)
   };
 }
 
@@ -176,7 +198,8 @@ export async function pushAppState(userId: string, state: AppState) {
     preferences: {
       theme: normalized.theme,
       energyColorMode: normalized.energyColorMode,
-      calendarEnergyMode: normalized.calendarEnergyMode
+      calendarEnergyMode: normalized.calendarEnergyMode,
+      letterPaperStyle: normalized.letterPaperStyle
     },
     updated_at: new Date().toISOString()
   });
@@ -194,7 +217,7 @@ export async function pullAppState(userId: string, local: AppState): Promise<App
   ] = await Promise.all([
     supabase.from("entries").select("id,text,mood,energy,created_at").eq("user_id", userId).order("created_at", { ascending: false }),
     supabase.from("letters").select("id,title,body,period_start,period_end,delivered_at,summary_json,postscript").eq("user_id", userId).order("delivered_at", { ascending: false }),
-    supabase.from("notification_settings").select("enabled,start_time,interval_minutes,dnd_start,dnd_end").eq("user_id", userId).maybeSingle(),
+    supabase.from("notification_settings").select("enabled,schedule_mode,start_time,interval_minutes,dnd_start,dnd_end,weekdays,fixed_times").eq("user_id", userId).maybeSingle(),
     supabase.from("app_settings").select("preferences").eq("user_id", userId).maybeSingle()
   ]);
 
@@ -212,7 +235,8 @@ export async function pullAppState(userId: string, local: AppState): Promise<App
     settings: notificationResult.data ? rowToSettings(notificationResult.data as NotificationSettingsRow) : local.settings,
     theme: preferences.theme || local.theme,
     energyColorMode: preferences.energyColorMode || local.energyColorMode,
-    calendarEnergyMode: preferences.calendarEnergyMode || local.calendarEnergyMode
+    calendarEnergyMode: preferences.calendarEnergyMode || local.calendarEnergyMode,
+    letterPaperStyle: normalizeLetterPaperStyle(preferences.letterPaperStyle || local.letterPaperStyle)
   };
 }
 
@@ -238,6 +262,22 @@ export async function deleteRemoteEntries(userId: string, entryIds: string[]) {
   if (!ids.length) return;
   const { error } = await supabase.from("entries").delete().eq("user_id", userId).in("id", ids);
   if (error) throw error;
+}
+
+export async function deleteRemoteUserData(userId: string) {
+  const tables = [
+    "entries",
+    "letters",
+    "letter_periods",
+    "push_tokens",
+    "notification_settings",
+    "app_settings"
+  ];
+
+  for (const table of tables) {
+    const { error } = await supabase.from(table).delete().eq("user_id", userId);
+    if (error) throw { ...error, message: `${table} 삭제 실패: ${error.message}` };
+  }
 }
 
 export async function upsertRemoteSettings(userId: string, state: AppState) {

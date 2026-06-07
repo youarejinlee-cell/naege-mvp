@@ -5,6 +5,10 @@ import { NotificationSettings } from "../types/domain";
 
 const NOTIFICATION_IDS_KEY = "log-to-letter-notification-ids-v1";
 const MAX_DAILY_NOTIFICATIONS = 12;
+const MAX_FIXED_TIMES = 5;
+const MIN_INTERVAL_MINUTES = 10;
+const MAX_INTERVAL_MINUTES = 120;
+const INTERVAL_STEP_MINUTES = 5;
 
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
@@ -31,11 +35,16 @@ function isInDnd(minuteOfDay: number, dndStart: number, dndEnd: number) {
   return minuteOfDay >= dndStart || minuteOfDay < dndEnd;
 }
 
+function normalizeIntervalMinutes(value: number) {
+  const clamped = Math.max(MIN_INTERVAL_MINUTES, Math.min(MAX_INTERVAL_MINUTES, Number(value) || MAX_INTERVAL_MINUTES));
+  return Math.round((clamped - MIN_INTERVAL_MINUTES) / INTERVAL_STEP_MINUTES) * INTERVAL_STEP_MINUTES + MIN_INTERVAL_MINUTES;
+}
+
 function getScheduleMinutes(settings: NotificationSettings) {
   const start = parseTime(settings.startTime);
   const dndStart = parseTime(settings.dndStart);
   const dndEnd = parseTime(settings.dndEnd);
-  const interval = Math.max(15, Math.min(360, Number(settings.intervalMinutes) || 120));
+  const interval = normalizeIntervalMinutes(settings.intervalMinutes);
   if (start === null || dndStart === null || dndEnd === null) return [];
 
   const times: number[] = [];
@@ -45,6 +54,17 @@ function getScheduleMinutes(settings: NotificationSettings) {
     }
   }
   return times;
+}
+
+function getFixedSchedule(settings: NotificationSettings) {
+  const weekdays = (settings.weekdays?.length ? settings.weekdays : [1, 2, 3, 4, 5, 6, 7])
+    .filter((day) => day >= 1 && day <= 7);
+  const times = (settings.fixedTimes?.length ? settings.fixedTimes : ["10:00"])
+    .slice(0, MAX_FIXED_TIMES)
+    .map(parseTime)
+    .filter((time): time is number => time !== null);
+
+  return weekdays.flatMap((weekday) => times.map((minuteOfDay) => ({ weekday, minuteOfDay })));
 }
 
 async function saveScheduledIds(ids: string[]) {
@@ -72,6 +92,32 @@ export async function getNotificationPermissionStatus() {
   return permission.granted ? "허용됨" : permission.canAskAgain ? "요청 가능" : "차단됨";
 }
 
+export async function getScheduledLogNotificationCount() {
+  const ids = await getScheduledIds();
+  return ids.length;
+}
+
+export async function scheduleTestLogNotification() {
+  const permission = await Notifications.requestPermissionsAsync();
+  if (!permission.granted) {
+    return permission.canAskAgain ? "권한 필요" : "권한 차단됨";
+  }
+
+  await Notifications.scheduleNotificationAsync({
+    content: {
+      title: "Log to Letter",
+      body: "테스트 알림이야. 지금 무슨 생각하고 있어?",
+      data: { screen: "capture", test: true }
+    },
+    trigger: {
+      type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL,
+      seconds: 10
+    }
+  });
+
+  return "10초 뒤 테스트 알림을 보낼게.";
+}
+
 export async function scheduleLogNotifications(settings: NotificationSettings) {
   await cancelLogNotifications();
   if (!settings.enabled) return { status: "꺼짐", count: 0 };
@@ -88,24 +134,42 @@ export async function scheduleLogNotifications(settings: NotificationSettings) {
     return { status: permission.canAskAgain ? "권한 필요" : "권한 차단됨", count: 0 };
   }
 
-  const times = getScheduleMinutes(settings);
-  const ids = await Promise.all(times.map((minuteOfDay) => {
-    const hour = Math.floor(minuteOfDay / 60);
-    const minute = minuteOfDay % 60;
-    return Notifications.scheduleNotificationAsync({
-      content: {
-        title: "Log to Letter",
-        body: "지금 무슨 생각하고 있어?",
-        data: { screen: "capture" }
-      },
-      trigger: {
-        type: Notifications.SchedulableTriggerInputTypes.DAILY,
-        hour,
-        minute,
-        channelId: Platform.OS === "android" ? "log-reminders" : undefined
-      }
-    });
-  }));
+  const ids = settings.scheduleMode === "fixed"
+    ? await Promise.all(getFixedSchedule(settings).map(({ weekday, minuteOfDay }) => {
+      const hour = Math.floor(minuteOfDay / 60);
+      const minute = minuteOfDay % 60;
+      return Notifications.scheduleNotificationAsync({
+        content: {
+          title: "Log to Letter",
+          body: "지금 무슨 생각하고 있어?",
+          data: { screen: "capture" }
+        },
+        trigger: {
+          type: Notifications.SchedulableTriggerInputTypes.WEEKLY,
+          weekday,
+          hour,
+          minute,
+          channelId: Platform.OS === "android" ? "log-reminders" : undefined
+        }
+      });
+    }))
+    : await Promise.all(getScheduleMinutes(settings).map((minuteOfDay) => {
+      const hour = Math.floor(minuteOfDay / 60);
+      const minute = minuteOfDay % 60;
+      return Notifications.scheduleNotificationAsync({
+        content: {
+          title: "Log to Letter",
+          body: "지금 무슨 생각하고 있어?",
+          data: { screen: "capture" }
+        },
+        trigger: {
+          type: Notifications.SchedulableTriggerInputTypes.DAILY,
+          hour,
+          minute,
+          channelId: Platform.OS === "android" ? "log-reminders" : undefined
+        }
+      });
+    }));
 
   await saveScheduledIds(ids);
   return { status: "예약됨", count: ids.length };

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import { Screen } from "../components/Screen";
 import { useAppTheme } from "../lib/theme";
@@ -6,8 +6,12 @@ import { Entry } from "../types/domain";
 
 type Props = {
   testToday?: string;
+  notificationStatus?: string | null;
   onChangeTestToday: (date?: string) => void;
   onAddSampleEntry: (entry: Omit<Entry, "id" | "createdAt">) => void;
+  onRefreshNotifications: () => Promise<string>;
+  onSendTestNotification: () => Promise<string>;
+  onCancelNotifications: () => Promise<string>;
 };
 
 const samples: Array<Omit<Entry, "id" | "createdAt">> = [
@@ -29,51 +33,126 @@ const samples: Array<Omit<Entry, "id" | "createdAt">> = [
 ];
 
 function todayKey() {
-  return new Date().toISOString().slice(0, 10);
+  const date = new Date();
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
 }
 
-export function DevConsoleScreen({ testToday, onChangeTestToday, onAddSampleEntry }: Props) {
+export function DevConsoleScreen({
+  testToday,
+  notificationStatus,
+  onChangeTestToday,
+  onAddSampleEntry,
+  onRefreshNotifications,
+  onSendTestNotification,
+  onCancelNotifications
+}: Props) {
   const theme = useAppTheme();
   const displayToday = testToday || todayKey();
-  const [draftDate, setDraftDate] = useState(displayToday);
+  const dateInputRef = useRef<TextInput | null>(null);
+  const draftDate = useRef(displayToday);
   const [lastAddedText, setLastAddedText] = useState<string | null>(null);
+  const [notificationMessage, setNotificationMessage] = useState<string | null>(null);
+  const [notificationBusy, setNotificationBusy] = useState(false);
 
   useEffect(() => {
-    setDraftDate(displayToday);
+    draftDate.current = displayToday;
+    dateInputRef.current?.setNativeProps({ text: displayToday });
   }, [displayToday]);
 
   return (
     <Screen eyebrow="DEVELOPMENT" title="테스트 콘솔" lead="운영 배포 때는 이 화면만 떼어내면 돼.">
       <View style={styles.grid}>
-        <Tile label="알림 권한" value="확인 전" />
+        <Tile label="알림 상태" value={notificationStatus || "확인 전"} />
         <Tile label="마이크 권한" value="확인 전" />
-        <Tile label="앱 알림" value="꺼짐" />
+        <Tile label="앱 알림" value={notificationStatus?.includes("예약") ? "예약 확인" : "확인 전"} />
         <Tile label="테스트 오늘" value={displayToday} />
+      </View>
+
+      <View style={styles.panel}>
+        <Text style={styles.sectionTitle}>알림 테스트</Text>
+        <Text style={styles.description}>권한과 예약 개수를 확인하고, 10초 뒤 도착하는 테스트 알림을 보내볼 수 있어.</Text>
+        <View style={styles.actions}>
+          <ActionButton
+            label="상태 새로고침"
+            disabled={notificationBusy}
+            backgroundColor={theme.soft}
+            color={theme.tint}
+            onPress={async () => {
+              setNotificationBusy(true);
+              try {
+                setNotificationMessage(await onRefreshNotifications());
+              } finally {
+                setNotificationBusy(false);
+              }
+            }}
+          />
+          <ActionButton
+            label="10초 뒤 테스트"
+            disabled={notificationBusy}
+            backgroundColor={theme.tint}
+            color="#fff"
+            onPress={async () => {
+              setNotificationBusy(true);
+              try {
+                setNotificationMessage(await onSendTestNotification());
+              } finally {
+                setNotificationBusy(false);
+              }
+            }}
+          />
+        </View>
+        <ActionButton
+          label="예약 알림 모두 취소"
+          disabled={notificationBusy}
+          backgroundColor="#fff1f0"
+          color="#d92d20"
+          onPress={async () => {
+            setNotificationBusy(true);
+            try {
+              setNotificationMessage(await onCancelNotifications());
+            } finally {
+              setNotificationBusy(false);
+            }
+          }}
+        />
+        {notificationMessage ? (
+          <Text style={[styles.successText, { color: theme.tint }]}>{notificationMessage}</Text>
+        ) : null}
       </View>
 
       <View style={styles.panel}>
         <Text style={styles.sectionTitle}>오늘 날짜 테스트</Text>
         <Text style={styles.description}>YYYY-MM-DD 형식으로 넣으면 편지 생성 기준 날짜도 그날로 볼게.</Text>
         <TextInput
-          value={draftDate}
+          ref={dateInputRef}
+          defaultValue={displayToday}
           onChangeText={(value) => {
-            setDraftDate(value);
-            if (/^\d{4}-\d{2}-\d{2}$/.test(value)) {
-              onChangeTestToday(value);
-            }
+            draftDate.current = value;
           }}
           placeholder="2026-06-06"
           style={styles.input}
         />
         <View style={styles.actions}>
+          <Pressable
+            style={[styles.secondaryButton, { backgroundColor: theme.tint }]}
+            onPress={() => {
+              if (/^\d{4}-\d{2}-\d{2}$/.test(draftDate.current)) {
+                onChangeTestToday(draftDate.current);
+              }
+            }}
+          >
+            <Text style={[styles.secondaryButtonText, { color: "#fff" }]}>적용</Text>
+          </Pressable>
           <Pressable style={[styles.secondaryButton, { backgroundColor: theme.soft }]} onPress={() => {
-            setDraftDate(todayKey());
+            draftDate.current = todayKey();
+            dateInputRef.current?.setNativeProps({ text: draftDate.current });
             onChangeTestToday(undefined);
           }}>
             <Text style={[styles.secondaryButtonText, { color: theme.tint }]}>실제 오늘로</Text>
           </Pressable>
           <Pressable style={[styles.secondaryButton, { backgroundColor: theme.soft }]} onPress={() => {
-            setDraftDate("2026-06-13");
+            draftDate.current = "2026-06-13";
+            dateInputRef.current?.setNativeProps({ text: draftDate.current });
             onChangeTestToday("2026-06-13");
           }}>
             <Text style={[styles.secondaryButtonText, { color: theme.tint }]}>2026-06-13</Text>
@@ -111,6 +190,30 @@ function Tile({ label, value }: { label: string; value: string }) {
       <Text style={styles.label}>{label}</Text>
       <Text style={styles.value}>{value}</Text>
     </View>
+  );
+}
+
+function ActionButton({
+  label,
+  disabled,
+  backgroundColor,
+  color,
+  onPress
+}: {
+  label: string;
+  disabled?: boolean;
+  backgroundColor: string;
+  color: string;
+  onPress: () => void;
+}) {
+  return (
+    <Pressable
+      disabled={disabled}
+      style={[styles.secondaryButton, { backgroundColor }, disabled && styles.disabledButton]}
+      onPress={onPress}
+    >
+      <Text style={[styles.secondaryButtonText, { color }]}>{disabled ? "처리 중" : label}</Text>
+    </Pressable>
   );
 }
 
@@ -181,6 +284,9 @@ const styles = StyleSheet.create({
   secondaryButtonText: {
     color: "#2f8f54",
     fontWeight: "900"
+  },
+  disabledButton: {
+    opacity: 0.55
   },
   sampleButton: {
     gap: 5,

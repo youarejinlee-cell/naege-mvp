@@ -4,19 +4,27 @@ import { StatusBar } from "expo-status-bar";
 import { User } from "@supabase/supabase-js";
 import { AuthCard } from "./src/components/AuthCard";
 import { BottomTabs, TabKey } from "./src/components/BottomTabs";
+import { AccountScreen } from "./src/screens/AccountScreen";
 import { AppSettingsScreen } from "./src/screens/AppSettingsScreen";
 import { CalendarScreen } from "./src/screens/CalendarScreen";
 import { CaptureScreen } from "./src/screens/CaptureScreen";
 import { DevConsoleScreen } from "./src/screens/DevConsoleScreen";
+import { GuideScreen } from "./src/screens/GuideScreen";
 import { InboxScreen } from "./src/screens/InboxScreen";
 import { SettingsScreen } from "./src/screens/SettingsScreen";
-import { isDevelopmentVariant } from "./src/lib/appVariant";
+import { canUseDevTools } from "./src/lib/appVariant";
 import { createId, isUuid } from "./src/lib/ids";
 import { buildWeeklyLetter } from "./src/lib/letter";
-import { cancelLogNotifications, getNotificationPermissionStatus, scheduleLogNotifications } from "./src/lib/notifications";
-import { deleteRemoteEntries, normalizeStateIds, syncAppState, upsertEntry, upsertRemoteSettings } from "./src/lib/remoteSync";
+import {
+  cancelLogNotifications,
+  getNotificationPermissionStatus,
+  getScheduledLogNotificationCount,
+  scheduleLogNotifications,
+  scheduleTestLogNotification
+} from "./src/lib/notifications";
+import { deleteRemoteEntries, deleteRemoteUserData, normalizeStateIds, syncAppState, upsertEntry, upsertRemoteSettings } from "./src/lib/remoteSync";
 import { defaultState, loadAppState, saveAppState } from "./src/lib/storage";
-import { getCurrentSession, signInWithGoogle, signOut, supabase } from "./src/lib/supabase";
+import { deleteAccount, getCurrentSession, signInWithGoogle, signOut, supabase } from "./src/lib/supabase";
 import { AppThemeProvider, themePalettes } from "./src/lib/theme";
 import { AppState, ColorTheme, EnergyColorMode, Entry } from "./src/types/domain";
 
@@ -30,15 +38,17 @@ function startOfDay(value: string | Date) {
 }
 
 function dateKey(value: string | Date) {
-  return startOfDay(value).toISOString().slice(0, 10);
+  if (typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value)) return value;
+  const date = typeof value === "string" ? new Date(value) : value;
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
 }
 
 function currentAppDate(state: AppState) {
-  return state.testToday ? startOfDay(`${state.testToday}T00:00:00`) : startOfDay(new Date());
+  return canUseDevTools && state.testToday ? startOfDay(`${state.testToday}T00:00:00`) : startOfDay(new Date());
 }
 
 function nowForState(state: AppState) {
-  if (!state.testToday) return new Date();
+  if (!canUseDevTools || !state.testToday) return new Date();
   const now = new Date();
   return new Date(`${state.testToday}T${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}:${String(now.getSeconds()).padStart(2, "0")}`);
 }
@@ -59,6 +69,10 @@ function getErrorMessage(error: unknown) {
     ].filter(Boolean).join(" · ") || JSON.stringify(error);
   }
   return String(error || "서버 동기화에 실패했어.");
+}
+
+function sanitizeStateForVariant(state: AppState): AppState {
+  return canUseDevTools ? state : { ...state, testToday: undefined };
 }
 
 function reconcileLetters(state: AppState, today = currentAppDate(state)): AppState {
@@ -108,11 +122,11 @@ export default function App() {
   const [hydrated, setHydrated] = useState(false);
   const letters = state.letters;
   const theme = themePalettes[state.theme];
-  const activeTab = !isDevelopmentVariant && tab === "dev" ? "capture" : tab;
+  const activeTab = !canUseDevTools && tab === "dev" ? "capture" : tab;
 
   useEffect(() => {
     loadAppState().then((loaded) => {
-      setState(reconcileLetters(normalizeStateIds(loaded)));
+      setState(reconcileLetters(sanitizeStateForVariant(normalizeStateIds(loaded))));
       setHydrated(true);
     });
   }, []);
@@ -132,7 +146,10 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    saveAppState(state);
+    const timer = setTimeout(() => {
+      saveAppState(state);
+    }, 300);
+    return () => clearTimeout(timer);
   }, [state]);
 
   const runFullSync = async (targetUser = user, targetState = state) => {
@@ -177,11 +194,13 @@ export default function App() {
   };
 
   const setTestToday = (testToday?: string) => {
+    if (!canUseDevTools) return;
     const normalized = testToday && /^\d{4}-\d{2}-\d{2}$/.test(testToday) ? testToday : undefined;
     setState((current) => reconcileLetters({ ...current, testToday: normalized }, normalized ? startOfDay(`${normalized}T00:00:00`) : startOfDay(new Date())));
   };
 
   const addSampleEntry = (entry: Omit<Entry, "id" | "createdAt">) => {
+    if (!canUseDevTools) return;
     const sampleDate = state.testToday || dateKey(new Date());
     const createdAt = new Date(`${sampleDate}T09:30:00`).toISOString();
     const sampleEntry = { ...entry, id: createId(), createdAt };
@@ -225,6 +244,43 @@ export default function App() {
     setUser(null);
   };
 
+  const handleDeleteUserData = async () => {
+    setSyncStatus("삭제 중");
+    setAuthError(null);
+    try {
+      if (user) {
+        await deleteRemoteUserData(user.id);
+      }
+      await cancelLogNotifications();
+      setNotificationStatus("예약 0개");
+      setState(sanitizeStateForVariant(defaultState));
+      setCalendarFocusDate(undefined);
+      setTab("capture");
+      setSyncStatus("삭제 완료");
+    } catch (error) {
+      console.warn("User data delete failed", error);
+      setSyncStatus("실패");
+      setAuthError(getErrorMessage(error));
+    }
+  };
+
+  const handleDeleteAccount = async () => {
+    setSyncStatus("계정 삭제 중");
+    setAuthError(null);
+    try {
+      await handleDeleteUserData();
+      await deleteAccount();
+      await signOut();
+      setUser(null);
+      setSyncStatus(null);
+      setTab("capture");
+    } catch (error) {
+      console.warn("Account delete failed", error);
+      setSyncStatus("실패");
+      setAuthError(getErrorMessage(error));
+    }
+  };
+
   const setTheme = (theme: ColorTheme) => {
     setState((current) => {
       const next = { ...current, theme };
@@ -260,11 +316,36 @@ export default function App() {
         return;
       }
       const result = await scheduleLogNotifications(settings);
-      setNotificationStatus(`${result.status}${result.count ? ` · ${result.count}개` : ""}`);
+      const countLabel = settings.scheduleMode === "fixed"
+        ? `일주일 ${result.count}번의 기록을 할 수 있어`
+        : `하루 ${result.count}번의 기록을 할 수 있어`;
+      setNotificationStatus(result.count ? countLabel : result.status);
     } catch (error) {
       console.warn("Notification scheduling failed", error);
       setNotificationStatus(error instanceof Error ? error.message : "예약 실패");
     }
+  };
+
+  const refreshNotificationDebug = async () => {
+    const [permission, count] = await Promise.all([
+      getNotificationPermissionStatus(),
+      getScheduledLogNotificationCount()
+    ]);
+    const status = `${permission} · 예약 ${count}개`;
+    setNotificationStatus(status);
+    return status;
+  };
+
+  const sendTestNotification = async () => {
+    const result = await scheduleTestLogNotification();
+    setNotificationStatus(result);
+    return result;
+  };
+
+  const cancelScheduledNotifications = async () => {
+    await cancelLogNotifications();
+    setNotificationStatus("예약 0개");
+    return "예약된 기록 알림을 모두 취소했어.";
   };
 
   useEffect(() => {
@@ -292,6 +373,7 @@ export default function App() {
     inbox: (
       <InboxScreen
         letters={letters}
+        letterPaperStyle={state.letterPaperStyle}
         onSavePostscript={(letterId, postscript) => {
           setState((current) => ({
             ...current,
@@ -310,13 +392,29 @@ export default function App() {
     settings: (
       <SettingsScreen
         settings={state.settings}
-        notificationStatus={notificationStatus}
         onChange={(settings) => setState((current) => {
-          const next = { ...current, settings };
-          applyNotificationSettings(settings);
-          if (user) upsertRemoteSettings(user.id, next).catch((error) => console.warn("Supabase notification settings sync failed", error));
-          return next;
+          return { ...current, settings };
         })}
+        onSave={async (settings) => {
+          const next = { ...state, settings };
+          await applyNotificationSettings(settings);
+          if (user) {
+            await upsertRemoteSettings(user.id, next);
+          }
+        }}
+      />
+    ),
+    account: (
+      <AccountScreen
+        user={user}
+        loading={authLoading}
+        error={authError}
+        syncStatus={syncStatus}
+        onGoogleLogin={handleGoogleLogin}
+        onSync={() => runFullSync()}
+        onDeleteData={handleDeleteUserData}
+        onDeleteAccount={handleDeleteAccount}
+        onSignOut={handleSignOut}
       />
     ),
     appSettings: (
@@ -324,6 +422,7 @@ export default function App() {
         theme={state.theme}
         energyColorMode={state.energyColorMode}
         calendarEnergyMode={state.calendarEnergyMode}
+        letterPaperStyle={state.letterPaperStyle}
         onChangeTheme={setTheme}
         onChangeEnergyColorMode={setEnergyColorMode}
         onChangeCalendarEnergyMode={(calendarEnergyMode) => setState((current) => {
@@ -331,13 +430,23 @@ export default function App() {
           if (user) upsertRemoteSettings(user.id, next).catch((error) => console.warn("Supabase calendar mode sync failed", error));
           return next;
         })}
+        onChangeLetterPaperStyle={(letterPaperStyle) => setState((current) => {
+          const next = { ...current, letterPaperStyle };
+          if (user) upsertRemoteSettings(user.id, next).catch((error) => console.warn("Supabase letter paper sync failed", error));
+          return next;
+        })}
       />
     ),
+    guide: <GuideScreen />,
     dev: (
       <DevConsoleScreen
         testToday={state.testToday}
+        notificationStatus={notificationStatus}
         onChangeTestToday={setTestToday}
         onAddSampleEntry={addSampleEntry}
+        onRefreshNotifications={refreshNotificationDebug}
+        onSendTestNotification={sendTestNotification}
+        onCancelNotifications={cancelScheduledNotifications}
       />
     )
   }[activeTab];
@@ -348,7 +457,7 @@ export default function App() {
         <StatusBar style="dark" />
         <View style={[styles.header, { borderBottomColor: theme.border, backgroundColor: theme.page }]}>
           <View style={styles.brandWrap}>
-            <Image source={require("./assets/icon.png")} style={styles.logo} />
+            <Image source={require("./assets/app-icon.png")} style={styles.logo} />
             <View>
               <Text style={styles.brand}>Log to Letter</Text>
               <Text style={styles.tagline}>미래의 나에게 보내는 지금의 나</Text>
@@ -375,11 +484,18 @@ export default function App() {
                 user={user}
                 loading={authLoading}
                 error={authError}
-                syncStatus={syncStatus}
                 onGoogleLogin={handleGoogleLogin}
-                onSignOut={handleSignOut}
-                onSync={() => runFullSync()}
               />
+              <Pressable
+                style={[styles.menuListItem, { borderTopColor: theme.border }]}
+                onPress={() => {
+                  setTab("account");
+                  setMenuOpen(false);
+                }}
+              >
+                <Text style={styles.menuListIcon}>👤</Text>
+                <Text style={styles.menuListText}>계정</Text>
+              </Pressable>
               <Pressable
                 style={[styles.menuListItem, { borderTopColor: theme.border }]}
                 onPress={() => {
@@ -389,6 +505,16 @@ export default function App() {
               >
                 <Text style={styles.menuListIcon}>⚙️</Text>
                 <Text style={styles.menuListText}>설정</Text>
+              </Pressable>
+              <Pressable
+                style={[styles.menuListItem, { borderTopColor: theme.border }]}
+                onPress={() => {
+                  setTab("guide");
+                  setMenuOpen(false);
+                }}
+              >
+                <Text style={styles.menuListIcon}>📗</Text>
+                <Text style={styles.menuListText}>가이드</Text>
               </Pressable>
             </View>
           </>

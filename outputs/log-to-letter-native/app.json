@@ -5,10 +5,10 @@
     "scheme": "logtoletter",
     "version": "0.1.0",
     "orientation": "portrait",
-    "icon": "./assets/icon.png",
+    "icon": "./assets/app-icon.png",
     "userInterfaceStyle": "light",
     "splash": {
-      "image": "./assets/icon.png",
+      "image": "./assets/app-icon.png",
       "resizeMode": "contain",
       "backgroundColor": "#f3faee"
     },
@@ -19,19 +19,21 @@
         "ITSAppUsesNonExemptEncryption": false,
         "NSUserNotificationUsageDescription": "순간의 생각을 기록할 수 있도록 알림을 보내기 위해 사용해.",
         "NSMicrophoneUsageDescription": "음성으로 생각을 기록할 때 받아쓰기를 위해 사용해.",
-        "NSSpeechRecognitionUsageDescription": "말한 내용을 기록 문장으로 바꾸기 위해 사용해."
+        "NSSpeechRecognitionUsageDescription": "말한 내용을 기록 문장으로 바꾸기 위해 사용해.",
+        "NSPhotoLibraryAddUsageDescription": "편지를 이미지로 저장하기 위해 사진 보관함 접근 권한을 사용해."
       }
     },
     "android": {
       "adaptiveIcon": {
-        "foregroundImage": "./assets/icon.png",
+        "foregroundImage": "./assets/app-icon.png",
         "backgroundColor": "#f3faee"
       },
       "package": "com.logtoletter.app"
     },
     "plugins": [
       "expo-dev-client",
-      "expo-notifications"
+      "expo-notifications",
+      "expo-media-library"
     ],
     "extra": {
       "eas": {

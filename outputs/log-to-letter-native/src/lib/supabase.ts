@@ -65,7 +65,6 @@ export async function signInWithGoogle(): Promise<Session | null> {
   }
 
   const redirectTo = getGoogleRedirectUri();
-  console.log("Supabase OAuth redirectTo", redirectTo);
   const { data, error } = await supabase.auth.signInWithOAuth({
     provider: "google",
     options: {
@@ -76,10 +75,8 @@ export async function signInWithGoogle(): Promise<Session | null> {
 
   if (error) throw error;
   if (!data.url) throw new Error("Google 로그인 URL을 만들지 못했어.");
-  console.log("Supabase OAuth URL", data.url);
 
   const result = await WebBrowser.openAuthSessionAsync(data.url, redirectTo);
-  console.log("Supabase OAuth result", result);
   if (result.type !== "success") return null;
 
   const { accessToken, refreshToken, code } = getAuthParams(result.url);
@@ -104,4 +101,10 @@ export async function signInWithGoogle(): Promise<Session | null> {
 export async function signOut() {
   if (!isSupabaseConfigured) return;
   await supabase.auth.signOut();
+}
+
+export async function deleteAccount() {
+  if (!isSupabaseConfigured) throw new Error("Supabase 설정이 필요해.");
+  const { error } = await supabase.functions.invoke("delete-account");
+  if (error) throw error;
 }
