@@ -11,7 +11,6 @@ import { CaptureScreen } from "./src/screens/CaptureScreen";
 import { DevConsoleScreen } from "./src/screens/DevConsoleScreen";
 import { GuideScreen } from "./src/screens/GuideScreen";
 import { InboxScreen } from "./src/screens/InboxScreen";
-import { MoodCollectionScreen } from "./src/screens/MoodCollectionScreen";
 import { SettingsScreen } from "./src/screens/SettingsScreen";
 import { canUseDevTools } from "./src/lib/appVariant";
 import { createId, isUuid } from "./src/lib/ids";
@@ -707,6 +706,7 @@ export default function App() {
         entries={state.entries}
         energyColorMode={state.energyColorMode}
         calendarMode={state.calendarEnergyMode}
+        targetMoods={state.targetMoods}
         focusDate={calendarFocusDate}
         onDeleteEntries={deleteEntries}
       />
@@ -731,7 +731,16 @@ export default function App() {
         }}
       />
     ),
-    collection: <MoodCollectionScreen entries={state.entries} energyColorMode={state.energyColorMode} targetMoods={state.targetMoods} />,
+    collection: (
+      <CalendarScreen
+        entries={state.entries}
+        energyColorMode={state.energyColorMode}
+        calendarMode={state.calendarEnergyMode}
+        targetMoods={state.targetMoods}
+        onDeleteEntries={deleteEntries}
+        analysisOnly
+      />
+    ),
     settings: (
       <SettingsScreen
         settings={state.settings}
@@ -792,13 +801,13 @@ export default function App() {
   return (
     <AppThemeProvider theme={theme}>
       <View style={[styles.safe, { backgroundColor: theme.page }]}>
-        <StatusBar style="dark" />
+        <StatusBar style={theme.isDark ? "light" : "dark"} />
         <View style={[styles.header, { borderBottomColor: theme.border, backgroundColor: theme.page }]}>
           <View style={styles.brandWrap}>
             <Image source={require("./assets/app-icon.png")} style={styles.logo} />
             <View>
-              <Text style={styles.brand}>Log to Letter</Text>
-              <Text style={styles.tagline}>미래의 나에게 보내는 지금의 나</Text>
+              <Text style={[styles.brand, { color: theme.text }]}>Log to Letter</Text>
+              <Text style={[styles.tagline, { color: theme.muted }]}>미래의 나에게 보내는 지금의 나</Text>
             </View>
           </View>
           <Pressable
@@ -811,11 +820,11 @@ export default function App() {
         {menuOpen ? (
           <>
             <Pressable style={styles.menuBackdrop} onPress={() => setMenuOpen(false)} />
-            <View style={[styles.floatingMenu, { borderColor: theme.border }]}>
-              <View style={[styles.floatingMenuHeader, { borderBottomColor: theme.border }]}>
-                <Text style={styles.floatingMenuTitle}>메뉴</Text>
+            <View style={[styles.floatingMenu, { borderColor: theme.border, backgroundColor: theme.card }]}>
+              <View style={[styles.floatingMenuHeader, { borderBottomColor: theme.border, backgroundColor: theme.card }]}>
+                <Text style={[styles.floatingMenuTitle, { color: theme.text }]}>메뉴</Text>
                 <Pressable style={styles.closeButton} onPress={() => setMenuOpen(false)}>
-                  <Text style={styles.closeButtonText}>×</Text>
+                  <Text style={[styles.closeButtonText, { color: theme.muted }]}>×</Text>
                 </Pressable>
               </View>
               <AuthCard
@@ -825,45 +834,45 @@ export default function App() {
                 onGoogleLogin={handleGoogleLogin}
               />
               <Pressable
-                style={[styles.menuListItem, { borderTopColor: theme.border }]}
+                style={[styles.menuListItem, { borderTopColor: theme.border, backgroundColor: theme.card }]}
                 onPress={() => {
                   setTab("account");
                   setMenuOpen(false);
                 }}
               >
                 <Text style={styles.menuListIcon}>👤</Text>
-                <Text style={styles.menuListText}>계정</Text>
+                <Text style={[styles.menuListText, { color: theme.text }]}>계정</Text>
               </Pressable>
               <Pressable
-                style={[styles.menuListItem, { borderTopColor: theme.border }]}
+                style={[styles.menuListItem, { borderTopColor: theme.border, backgroundColor: theme.card }]}
                 onPress={() => {
                   setTab("appSettings");
                   setMenuOpen(false);
                 }}
               >
                 <Text style={styles.menuListIcon}>⚙️</Text>
-                <Text style={styles.menuListText}>설정</Text>
+                <Text style={[styles.menuListText, { color: theme.text }]}>설정</Text>
               </Pressable>
               <Pressable
-                style={[styles.menuListItem, { borderTopColor: theme.border }]}
+                style={[styles.menuListItem, { borderTopColor: theme.border, backgroundColor: theme.card }]}
                 onPress={() => {
                   setTab("guide");
                   setMenuOpen(false);
                 }}
               >
                 <Text style={styles.menuListIcon}>📗</Text>
-                <Text style={styles.menuListText}>가이드</Text>
+                <Text style={[styles.menuListText, { color: theme.text }]}>가이드</Text>
               </Pressable>
               {canUseDevTools ? (
                 <Pressable
-                  style={[styles.menuListItem, { borderTopColor: theme.border }]}
+                  style={[styles.menuListItem, { borderTopColor: theme.border, backgroundColor: theme.card }]}
                   onPress={() => {
                     setTab("dev");
                     setMenuOpen(false);
                   }}
                 >
                   <Text style={styles.menuListIcon}>🧪</Text>
-                  <Text style={styles.menuListText}>테스트</Text>
+                  <Text style={[styles.menuListText, { color: theme.text }]}>테스트</Text>
                 </Pressable>
               ) : null}
             </View>

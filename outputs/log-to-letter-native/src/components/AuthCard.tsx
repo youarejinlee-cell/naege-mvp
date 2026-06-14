@@ -16,7 +16,7 @@ export function AuthCard({ user, loading, error, onGoogleLogin }: Props) {
   const avatarUrl = user?.user_metadata?.avatar_url || user?.user_metadata?.picture;
 
   return (
-    <View style={[styles.card, { borderBottomColor: theme.border, backgroundColor: theme.page }]}>
+    <View style={[styles.card, { borderBottomColor: theme.border, backgroundColor: theme.cardAlt }]}>
       {user ? (
         <View style={styles.profileRow}>
           {avatarUrl ? (
@@ -27,15 +27,15 @@ export function AuthCard({ user, loading, error, onGoogleLogin }: Props) {
             </View>
           )}
           <View style={styles.profileText}>
-            <Text style={styles.label}>계정</Text>
-            <Text style={styles.title}>{displayName}</Text>
+            <Text style={[styles.label, { color: theme.muted }]}>계정</Text>
+            <Text style={[styles.title, { color: theme.text }]}>{displayName}</Text>
           </View>
         </View>
       ) : (
         <>
-          <Text style={styles.label}>계정</Text>
-          <Text style={styles.title}>계정 연결</Text>
-          <Text style={styles.text}>
+          <Text style={[styles.label, { color: theme.muted }]}>계정</Text>
+          <Text style={[styles.title, { color: theme.text }]}>계정 연결</Text>
+          <Text style={[styles.text, { color: theme.muted }]}>
             {isSupabaseConfigured ? "Google 계정으로 연결할 수 있어." : "Supabase 설정을 넣으면 Google 로그인을 쓸 수 있어."}
           </Text>
           {error ? <Text style={styles.error}>{error}</Text> : null}
@@ -44,7 +44,7 @@ export function AuthCard({ user, loading, error, onGoogleLogin }: Props) {
             style={[styles.button, { backgroundColor: theme.tint }, (!isSupabaseConfigured || loading) && styles.disabled]}
             onPress={onGoogleLogin}
           >
-            <Text style={styles.buttonLabel}>{loading ? "연결 중" : "Google로 계속하기"}</Text>
+            <Text style={[styles.buttonLabel, { color: theme.inverseText }]}>{loading ? "연결 중" : "Google로 계속하기"}</Text>
           </Pressable>
         </>
       )}

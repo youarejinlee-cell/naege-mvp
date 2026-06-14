@@ -12,7 +12,7 @@ const tabs: Array<{ key: TabKey; label: string; icon: string }> = [
   { key: "capture", label: "기록", icon: "📝" },
   { key: "calendar", label: "캘린더", icon: "📅" },
   { key: "inbox", label: "편지보관함", icon: "✉️" },
-  { key: "collection", label: "모아보기", icon: "🗂️" },
+  { key: "collection", label: "분석 보기", icon: "📊" },
   { key: "settings", label: "알림", icon: "🔔" }
 ];
 
@@ -28,7 +28,7 @@ export function BottomTabs({ active, onChange }: Props) {
           style={[styles.item, active === tab.key && { backgroundColor: theme.soft }]}
         >
           <Text style={styles.icon}>{tab.icon}</Text>
-          <Text style={[styles.label, active === tab.key && { color: theme.tint }]}>{tab.label}</Text>
+          <Text style={[styles.label, { color: theme.muted }, active === tab.key && { color: theme.tint }]}>{tab.label}</Text>
         </Pressable>
       ))}
     </View>

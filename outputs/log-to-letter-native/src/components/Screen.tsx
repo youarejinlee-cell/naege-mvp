@@ -19,8 +19,8 @@ export function Screen({ eyebrow, title, lead, children }: Props) {
     >
       <View style={styles.heading}>
         <Text style={[styles.eyebrow, { color: theme.tint }]}>{eyebrow}</Text>
-        <Text style={styles.title}>{title}</Text>
-        {lead ? <Text style={styles.lead}>{lead}</Text> : null}
+        <Text style={[styles.title, { color: theme.text }]}>{title}</Text>
+        {lead ? <Text style={[styles.lead, { color: theme.muted }]}>{lead}</Text> : null}
       </View>
       {children}
     </ScrollView>

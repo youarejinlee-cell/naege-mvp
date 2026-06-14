@@ -44,6 +44,7 @@ export function AppSettingsScreen({
   onChangeTargetMoods,
   onChangeLetterPaperStyle
 }: Props) {
+  const currentTheme = themePalettes[theme];
   const toggleTargetMood = (mood: Mood) => {
     if (targetMoods.includes(mood)) {
       onChangeTargetMoods(targetMoods.filter((item) => item !== mood));
@@ -55,9 +56,9 @@ export function AppSettingsScreen({
 
   return (
     <Screen eyebrow="Settings" title="설정">
-      <View style={styles.panel}>
-        <Text style={styles.sectionTitle}>추구 감정</Text>
-        <Text style={styles.description}>네가 가장 느끼고 싶은 감정을 골라줘. 모아보기에서 가장 먼저 확인하게 해둘게</Text>
+      <View style={[styles.panel, { borderColor: currentTheme.border, backgroundColor: currentTheme.card }]}>
+        <Text style={[styles.sectionTitle, { color: currentTheme.text }]}>추구 감정</Text>
+        <Text style={[styles.description, { color: currentTheme.muted }]}>네가 가장 느끼고 싶은 감정을 골라줘. 모아보기에서 가장 먼저 확인하게 해둘게</Text>
         <View style={styles.moodWrap}>
           {positiveMoodOptions.map((mood) => {
             const active = targetMoods.includes(mood.key);
@@ -68,21 +69,21 @@ export function AppSettingsScreen({
                 disabled={disabled}
                 style={[
                   styles.moodChip,
-                  { borderColor: themePalettes[theme].border, backgroundColor: "#fff" },
-                  active && { borderColor: themePalettes[theme].tint, backgroundColor: themePalettes[theme].soft, borderWidth: 2 },
+                  { borderColor: currentTheme.border, backgroundColor: currentTheme.cardAlt },
+                  active && { borderColor: currentTheme.tint, backgroundColor: currentTheme.soft, borderWidth: 2 },
                   disabled && styles.disabledChip
                 ]}
                 onPress={() => toggleTargetMood(mood.key)}
               >
-                <Text style={[styles.moodText, active && { color: themePalettes[theme].tint }, disabled && styles.disabledText]}>{mood.label}</Text>
+                <Text style={[styles.moodText, { color: currentTheme.text }, active && { color: currentTheme.tint }, disabled && styles.disabledText]}>{mood.label}</Text>
               </Pressable>
             );
           })}
         </View>
       </View>
 
-      <View style={styles.panel}>
-        <Text style={styles.sectionTitle}>컬러 테마</Text>
+      <View style={[styles.panel, { borderColor: currentTheme.border, backgroundColor: currentTheme.card }]}>
+        <Text style={[styles.sectionTitle, { color: currentTheme.text }]}>컬러 테마</Text>
         <View style={styles.themeGrid}>
           {(Object.keys(themePalettes) as ColorTheme[]).map((key) => (
             <Pressable
@@ -94,38 +95,38 @@ export function AppSettingsScreen({
               ]}
               onPress={() => onChangeTheme(key)}
             >
-              <View style={[styles.themeSwatch, { backgroundColor: themePalettes[key].tint }]} />
-              <Text style={styles.themeButtonText}>{themePalettes[key].label}</Text>
+              <View style={[styles.themeSwatch, { backgroundColor: themePalettes[key].tint, borderColor: themePalettes[key].border }]} />
+              <Text style={[styles.themeButtonText, { color: key === "black" ? "#f4f4f4" : "#18241b" }]}>{themePalettes[key].label}</Text>
             </Pressable>
           ))}
         </View>
       </View>
 
-      <View style={styles.panel}>
-        <Text style={styles.sectionTitle}>편지지 디자인</Text>
+      <View style={[styles.panel, { borderColor: currentTheme.border, backgroundColor: currentTheme.card }]}>
+        <Text style={[styles.sectionTitle, { color: currentTheme.text }]}>편지지 디자인</Text>
         <View style={styles.letterPaperList}>
           {letterPaperOptions.map((option) => (
             <Pressable
               key={option.key}
               style={[
                 styles.letterPaperButton,
-                { borderColor: themePalettes[theme].border, backgroundColor: "#fff" },
-                letterPaperStyle === option.key && { borderColor: themePalettes[theme].tint, backgroundColor: themePalettes[theme].soft, borderWidth: 2 }
+                { borderColor: currentTheme.border, backgroundColor: currentTheme.cardAlt },
+                letterPaperStyle === option.key && { borderColor: currentTheme.tint, backgroundColor: currentTheme.soft, borderWidth: 2 }
               ]}
               onPress={() => onChangeLetterPaperStyle(option.key)}
             >
-              <View style={[styles.paperPreview, option.key !== "plain" && { borderColor: themePalettes[theme].tint }]}>
+              <View style={[styles.paperPreview, { backgroundColor: currentTheme.card, borderColor: currentTheme.border }, option.key !== "plain" && { borderColor: currentTheme.tint }]}>
                 {option.key === "clover" ? (
                   <>
-                    <MiniClover color={themePalettes[theme].tint} style={styles.paperCloverTop} />
-                    <MiniClover color={themePalettes[theme].tint} style={styles.paperCloverBottom} />
+                    <MiniClover color={currentTheme.tint} style={styles.paperCloverTop} />
+                    <MiniClover color={currentTheme.tint} style={styles.paperCloverBottom} />
                   </>
                 ) : null}
-                {option.key === "cloudTitle" ? <View style={[styles.paperSplitPreview, { backgroundColor: themePalettes[theme].soft }]} /> : null}
+                {option.key === "cloudTitle" ? <View style={[styles.paperSplitPreview, { backgroundColor: currentTheme.soft }]} /> : null}
               </View>
               <View style={styles.letterPaperTextWrap}>
-                <Text style={styles.energyModeLabel}>{option.label}</Text>
-                <Text style={styles.paperDescription}>{option.description}</Text>
+                <Text style={[styles.energyModeLabel, { color: currentTheme.text }]}>{option.label}</Text>
+                <Text style={[styles.paperDescription, { color: currentTheme.muted }]}>{option.description}</Text>
               </View>
             </Pressable>
           ))}
@@ -205,6 +206,7 @@ const styles = StyleSheet.create({
   themeSwatch: {
     width: 18,
     height: 18,
+    borderWidth: 1,
     borderRadius: 999
   },
   themeButtonText: {

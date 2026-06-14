@@ -8,6 +8,7 @@ export const entryCategoryOptions: Array<{ key: EntryCategory; label: string; pa
   { key: "dream", label: "꿈", pattern: /꿈|목표|미래|하고 싶|되고 싶|계획|성장|공부|배우|도전|이루|준비|욕망|바라는/ },
   { key: "taste", label: "취향", pattern: /취향|음악|노래|영화|책|쇼핑|먹|카페|쇼츠|드라마|음식|맛|빵|커피|옷|물건|콘텐츠|좋아하는 것/ },
   { key: "habit", label: "습관", pattern: /습관|루틴|반복|매일|정리|미루|기록|청소|일찍|늦게|잠들|핸드폰|스크롤|계속|자주|오늘도/ },
+  { key: "attitude", label: "태도", pattern: /태도|마음가짐|반응|대처|기준|완벽|노력|버티|피하|마주|선택|판단|집중|조절|극복|받아들이|해보려|하려고/ },
   { key: "health", label: "건강", pattern: /건강|몸|피곤|잠|아픔|컨디션|병원|두통|소화|산책|쉬|휴식|스트레칭|밥|운동|아침|수면/ },
   { key: "other", label: "기타", pattern: /$^/ }
 ];

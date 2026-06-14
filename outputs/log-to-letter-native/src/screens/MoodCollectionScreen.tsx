@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { CloverBadge } from "../components/CloverBadge";
 import { Screen } from "../components/Screen";
+import { categoryForEntry, entryCategoryLabels } from "../lib/entryCategories";
 import { getEnergyLevel, normalizeEnergyPercent } from "../lib/energyColors";
 import { useAppTheme } from "../lib/theme";
 import { EnergyColorMode, Entry, Mood } from "../types/domain";
@@ -107,13 +108,6 @@ function formatTimeLabel(value: string) {
   return `${period} ${hours % 12 || 12}시 ${String(minutes).padStart(2, "0")}분`;
 }
 
-function rangeTitle(mode: RangeMode, start: string, end: string) {
-  if (mode === "week") return "최근 1주 기록";
-  if (mode === "month") return "최근 1개월 기록";
-  if (mode === "quarter") return "최근 3개월 기록";
-  return `${formatDateLabel(start)} ~ ${formatDateLabel(end)} 기록`;
-}
-
 function mostUsedMood(entries: Entry[]) {
   const counts = entries.reduce<Record<string, { count: number; latest: number }>>((acc, entry) => {
     const current = acc[entry.mood] || { count: 0, latest: 0 };
@@ -140,7 +134,7 @@ function FilterIcon({ color }: { color: string }) {
   );
 }
 
-export function MoodCollectionScreen({ entries, energyColorMode, targetMoods }: Props) {
+export function MoodCollectionContent({ entries, energyColorMode, targetMoods }: Props) {
   const theme = useAppTheme();
   const defaultRange = rangeFromMode("quarter");
   const [rangeMode, setRangeMode] = useState<RangeMode>("quarter");
@@ -242,12 +236,12 @@ export function MoodCollectionScreen({ entries, energyColorMode, targetMoods }: 
     : "선택한 감정";
 
   return (
-    <Screen eyebrow="COLLECT" title="모아보기" lead="기간과 감정을 고르면 그때의 기록을 한곳에 모아볼 수 있어.">
-      <Text style={styles.sectionTitle}>필터</Text>
-      <View style={styles.filterPanel}>
+    <>
+      <Text style={[styles.sectionTitle, { color: theme.text }]}>필터</Text>
+      <View style={[styles.filterPanel, { borderColor: theme.border, backgroundColor: theme.card }]}>
         <View style={styles.filterSummary}>
-          <Text style={styles.rangeInfo}>{formatDateLabel(appliedRange.start)} ~ {formatDateLabel(appliedRange.end)}</Text>
-          <Text style={styles.resultSubtitle}>{selectedLabel}</Text>
+          <Text style={[styles.rangeInfo, { color: theme.muted }]}>{formatDateLabel(appliedRange.start)} ~ {formatDateLabel(appliedRange.end)}</Text>
+          <Text style={[styles.resultSubtitle, { color: theme.muted }]}>{selectedLabel}</Text>
         </View>
         <Pressable style={[styles.filterButton, { backgroundColor: theme.soft }]} onPress={openFilter}>
           <FilterIcon color={theme.tint} />
@@ -257,16 +251,16 @@ export function MoodCollectionScreen({ entries, energyColorMode, targetMoods }: 
       <Modal visible={filterOpen} transparent animationType="fade" onRequestClose={cancelFilter}>
         <View style={styles.modalBackdrop}>
           <Pressable style={styles.modalOutside} onPress={cancelFilter} />
-          <View style={styles.filterModal}>
+          <View style={[styles.filterModal, { backgroundColor: theme.card }]}>
             <View style={[styles.modalHeader, { borderBottomColor: theme.border }]}>
-              <Text style={styles.modalTitle}>필터 설정</Text>
+              <Text style={[styles.modalTitle, { color: theme.text }]}>필터 설정</Text>
               <Pressable style={[styles.closeButton, { backgroundColor: theme.soft }]} onPress={cancelFilter}>
                 <Text style={[styles.closeButtonText, { color: theme.tint }]}>×</Text>
               </Pressable>
             </View>
             <ScrollView style={styles.modalScroll} contentContainerStyle={styles.modalScrollContent} keyboardShouldPersistTaps="handled">
               <View style={styles.filterSection}>
-                <Text style={styles.sectionTitle}>기간</Text>
+                <Text style={[styles.sectionTitle, { color: theme.text }]}>기간</Text>
                 <View style={styles.segmentRow}>
                   {[
                     ["week", "1주"],
@@ -276,7 +270,7 @@ export function MoodCollectionScreen({ entries, energyColorMode, targetMoods }: 
                   ].map(([key, label]) => (
                     <Pressable
                       key={key}
-                      style={[styles.segment, draftRangeMode === key && { backgroundColor: theme.tint }]}
+                      style={[styles.segment, { backgroundColor: theme.cardAlt }, draftRangeMode === key && { backgroundColor: theme.tint }]}
                       onPress={() => {
                         if (key === "custom") {
                           setDraftRangeMode("custom");
@@ -285,7 +279,7 @@ export function MoodCollectionScreen({ entries, energyColorMode, targetMoods }: 
                         selectPreset(key as Exclude<RangeMode, "custom">);
                       }}
                     >
-                      <Text style={[styles.segmentText, draftRangeMode === key && styles.segmentTextActive]}>{label}</Text>
+                      <Text style={[styles.segmentText, { color: theme.muted }, draftRangeMode === key && { color: theme.inverseText }]}>{label}</Text>
                     </Pressable>
                   ))}
                 </View>
@@ -293,23 +287,25 @@ export function MoodCollectionScreen({ entries, energyColorMode, targetMoods }: 
                   <View style={styles.customDateBox}>
                     <View style={styles.dateInputRow}>
                       <View style={styles.dateField}>
-                        <Text style={styles.dateInputLabel}>시작일</Text>
+                        <Text style={[styles.dateInputLabel, { color: theme.muted }]}>시작일</Text>
                         <TextInput
                           value={draftStart}
                           onChangeText={setDraftStart}
                           placeholder="YYYY-MM-DD"
-                          style={styles.dateInput}
+                          placeholderTextColor={theme.muted}
+                          style={[styles.dateInput, { borderColor: theme.border, backgroundColor: theme.cardAlt, color: theme.text }]}
                           keyboardType="numbers-and-punctuation"
                         />
                       </View>
-                      <Text style={styles.wave}>~</Text>
+                      <Text style={[styles.wave, { color: theme.muted }]}>~</Text>
                       <View style={styles.dateField}>
-                        <Text style={styles.dateInputLabel}>종료일</Text>
+                        <Text style={[styles.dateInputLabel, { color: theme.muted }]}>종료일</Text>
                         <TextInput
                           value={draftEnd}
                           onChangeText={setDraftEnd}
                           placeholder="YYYY-MM-DD"
-                          style={styles.dateInput}
+                          placeholderTextColor={theme.muted}
+                          style={[styles.dateInput, { borderColor: theme.border, backgroundColor: theme.cardAlt, color: theme.text }]}
                           keyboardType="numbers-and-punctuation"
                         />
                       </View>
@@ -321,13 +317,13 @@ export function MoodCollectionScreen({ entries, energyColorMode, targetMoods }: 
 
               <View style={styles.filterSection}>
                 <View>
-                  <Text style={styles.sectionTitle}>감정</Text>
-                  <Text style={styles.moodHelp}>최대 3개까지 고를 수 있어</Text>
+                  <Text style={[styles.sectionTitle, { color: theme.text }]}>감정</Text>
+                  <Text style={[styles.moodHelp, { color: theme.muted }]}>최대 3개까지 고를 수 있어</Text>
                 </View>
                 <View style={styles.moodBoard}>
                   {(["긍정", "중간", "부정"] as const).map((group) => (
                     <View key={group} style={styles.moodGroup}>
-                      <Text style={styles.groupTitle}>{group}</Text>
+                      <Text style={[styles.groupTitle, { color: theme.muted }]}>{group}</Text>
                       <View style={styles.moodWrap}>
                         {moodOptions
                           .filter((mood) => mood.group === group)
@@ -341,6 +337,7 @@ export function MoodCollectionScreen({ entries, energyColorMode, targetMoods }: 
                                 disabled={disabled}
                                 style={[
                                   styles.moodChip,
+                                  { borderColor: theme.border, backgroundColor: theme.cardAlt },
                                   active && { borderColor: theme.tint, backgroundColor: theme.soft },
                                   disabled && styles.moodChipDisabled
                                 ]}
@@ -348,6 +345,7 @@ export function MoodCollectionScreen({ entries, energyColorMode, targetMoods }: 
                               >
                                 <Text style={[
                                   styles.moodText,
+                                  { color: theme.muted },
                                   active && { color: theme.tint },
                                   disabled && styles.moodTextDisabled
                                 ]}>{mood.label}{count ? ` ${count}` : ""}</Text>
@@ -360,12 +358,12 @@ export function MoodCollectionScreen({ entries, energyColorMode, targetMoods }: 
                 </View>
               </View>
             </ScrollView>
-            <View style={[styles.modalActions, { borderTopColor: theme.border }]}>
-              <Pressable style={styles.cancelButton} onPress={cancelFilter}>
-                <Text style={styles.cancelButtonText}>취소</Text>
+            <View style={[styles.modalActions, { borderTopColor: theme.border, backgroundColor: theme.card }]}>
+              <Pressable style={[styles.cancelButton, { borderColor: theme.border, backgroundColor: theme.cardAlt }]} onPress={cancelFilter}>
+                <Text style={[styles.cancelButtonText, { color: theme.muted }]}>취소</Text>
               </Pressable>
               <Pressable style={[styles.applyButton, { backgroundColor: theme.tint }]} onPress={confirmFilter}>
-                <Text style={styles.applyButtonText}>확인</Text>
+                <Text style={[styles.applyButtonText, { color: theme.inverseText }]}>확인</Text>
               </Pressable>
             </View>
           </View>
@@ -373,15 +371,15 @@ export function MoodCollectionScreen({ entries, energyColorMode, targetMoods }: 
       </Modal>
 
       <View style={styles.resultHeader}>
-        <Text style={styles.resultTitle}>{rangeTitle(rangeMode, appliedRange.start, appliedRange.end)}</Text>
+        <Text style={[styles.resultTitle, { color: theme.text }]}>기록</Text>
         <View style={styles.resultMetaRow}>
-          <Text style={styles.resultSubtitle}>총 {filteredEntries.length}개</Text>
+          <Text style={[styles.resultSubtitle, { color: theme.muted }]}>총 {filteredEntries.length}개</Text>
           <View style={[styles.orderSwitcher, { backgroundColor: theme.soft }]}>
-            <Pressable style={[styles.orderButton, sortDirection === "desc" && styles.orderButtonActive]} onPress={() => setSortDirection("desc")}>
-              <Text style={[styles.orderText, sortDirection === "desc" && { color: theme.tint }]}>최신순</Text>
+            <Pressable style={[styles.orderButton, sortDirection === "desc" && { backgroundColor: theme.card }]} onPress={() => setSortDirection("desc")}>
+              <Text style={[styles.orderText, { color: theme.muted }, sortDirection === "desc" && { color: theme.tint }]}>최신순</Text>
             </Pressable>
-            <Pressable style={[styles.orderButton, sortDirection === "asc" && styles.orderButtonActive]} onPress={() => setSortDirection("asc")}>
-              <Text style={[styles.orderText, sortDirection === "asc" && { color: theme.tint }]}>오래된순</Text>
+            <Pressable style={[styles.orderButton, sortDirection === "asc" && { backgroundColor: theme.card }]} onPress={() => setSortDirection("asc")}>
+              <Text style={[styles.orderText, { color: theme.muted }, sortDirection === "asc" && { color: theme.tint }]}>오래된순</Text>
             </Pressable>
           </View>
         </View>
@@ -391,11 +389,14 @@ export function MoodCollectionScreen({ entries, energyColorMode, targetMoods }: 
         {filteredEntries.length ? filteredEntries.map((entry) => {
           const energy = normalizeEnergyPercent(entry.energy);
           const energyLevel = getEnergyLevel(energyColorMode, energy, theme.tint);
+          const entryCategory = categoryForEntry(entry);
           return (
-            <View key={entry.id} style={styles.card}>
+            <View key={entry.id} style={[styles.card, { borderColor: theme.border, backgroundColor: theme.card }]}>
               <View style={styles.cardTop}>
                 <View style={styles.cardMetaLeft}>
-                  <Text style={styles.cardMood}>{moodLabelMap[entry.mood]}</Text>
+                  {entryCategory ? (
+                    <Text style={[styles.cardCategory, { color: theme.tint, backgroundColor: theme.soft }]}>{entryCategoryLabels[entryCategory]}</Text>
+                  ) : null}
                   <CloverBadge
                     color={energyLevel.color}
                     label={String(energy)}
@@ -404,19 +405,28 @@ export function MoodCollectionScreen({ entries, energyColorMode, targetMoods }: 
                     shadowOpacity={0.14}
                     glowColor="rgba(85, 85, 85, 0.08)"
                   />
+                  <Text style={[styles.cardMood, { color: theme.text }]}>{moodLabelMap[entry.mood]}</Text>
                 </View>
-                <Text style={styles.cardTime}>{formatDateLabel(entry.createdAt)} · {formatTimeLabel(entry.createdAt)}</Text>
+                <Text style={[styles.cardTime, { color: theme.muted }]}>{formatDateLabel(entry.createdAt)} · {formatTimeLabel(entry.createdAt)}</Text>
               </View>
-              <Text style={styles.cardText}>{entry.text}</Text>
+              <Text style={[styles.cardText, { color: theme.text }]}>{entry.text}</Text>
             </View>
           );
         }) : (
-          <View style={styles.emptyCard}>
-            <Text style={styles.emptyTitle}>해당 감정으로 남긴 기록이 없어</Text>
-            <Text style={styles.emptyText}>기간이나 감정을 바꿔서 다시 볼 수 있어.</Text>
+          <View style={[styles.emptyCard, { borderColor: theme.border, backgroundColor: theme.card }]}>
+            <Text style={[styles.emptyTitle, { color: theme.text }]}>해당 감정으로 남긴 기록이 없어</Text>
+            <Text style={[styles.emptyText, { color: theme.muted }]}>기간이나 감정을 바꿔서 다시 볼 수 있어.</Text>
           </View>
         )}
       </View>
+    </>
+  );
+}
+
+export function MoodCollectionScreen(props: Props) {
+  return (
+    <Screen eyebrow="COLLECT" title="모아보기" lead="기간과 감정을 고르면 그때의 기록을 한곳에 모아볼 수 있어.">
+      <MoodCollectionContent {...props} />
     </Screen>
   );
 }
@@ -790,6 +800,14 @@ const styles = StyleSheet.create({
     color: "#18241b",
     fontSize: 13,
     fontWeight: "900"
+  },
+  cardCategory: {
+    paddingHorizontal: 8,
+    paddingVertical: 5,
+    borderRadius: 999,
+    fontSize: 12,
+    fontWeight: "900",
+    overflow: "hidden"
   },
   cardTime: {
     color: "#657064",

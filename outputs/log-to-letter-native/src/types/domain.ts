@@ -43,6 +43,7 @@ export type EntryCategory =
   | "dream"
   | "taste"
   | "habit"
+  | "attitude"
   | "health"
   | "other";
 
@@ -80,7 +81,7 @@ export type NotificationSettings = {
   fixedTimes: string[];
 };
 
-export type ColorTheme = "red" | "yellow" | "green" | "blue";
+export type ColorTheme = "red" | "yellow" | "green" | "blue" | "white" | "black";
 export type CalendarEnergyMode = "first" | "last" | "most";
 export type EnergyColorMode = "soft" | "vivid";
 export type LetterPaperStyle = "plain" | "themeBorder" | "clover" | "cloudTitle";

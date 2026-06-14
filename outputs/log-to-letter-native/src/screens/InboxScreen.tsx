@@ -2,7 +2,7 @@ import { useRef, useState } from "react";
 import { Image, NativeScrollEvent, NativeSyntheticEvent, Pressable, ScrollView, StyleSheet, Text, TextInput, useWindowDimensions, View } from "react-native";
 import { Screen } from "../components/Screen";
 import { normalizeEnergyPercent } from "../lib/energyColors";
-import { useAppTheme } from "../lib/theme";
+import { AppTheme, useAppTheme } from "../lib/theme";
 import { Entry, Letter, LetterPaperStyle, Mood } from "../types/domain";
 
 declare const require: <T = unknown>(moduleName: string) => T;
@@ -91,11 +91,30 @@ function moodCategory(mood: Mood): MoodCategory {
   return "neutral";
 }
 
-const moodCategoryColors = {
-  positive: "#2f8f54",
-  neutral: "#8c948b",
-  negative: "#d85b52"
-};
+function hexToRgb(hex: string) {
+  const normalized = hex.replace("#", "");
+  const value = parseInt(normalized.length === 3
+    ? normalized.split("").map((char) => char + char).join("")
+    : normalized, 16);
+  return {
+    r: (value >> 16) & 255,
+    g: (value >> 8) & 255,
+    b: value & 255
+  };
+}
+
+function rgba(hex: string, alpha: number) {
+  const { r, g, b } = hexToRgb(hex);
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+}
+
+function getMoodCategoryColors(theme: AppTheme) {
+  return {
+    positive: theme.tint,
+    neutral: rgba(theme.tint, 0.52),
+    negative: rgba(theme.tint, 0.2)
+  };
+}
 
 function dateKey(value: string) {
   if (/^\d{4}-\d{2}-\d{2}/.test(value)) return value.slice(0, 10);
@@ -236,6 +255,8 @@ function energyMoodInsights(entries: Entry[]) {
 }
 
 function EnergyMoodChart({ entries }: { entries: Entry[] }) {
+  const theme = useAppTheme();
+  const moodCategoryColors = getMoodCategoryColors(theme);
   const sorted = [...entries].sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
   const [selectedId, setSelectedId] = useState(sorted[0]?.id || "");
   const selected = sorted.find((entry) => entry.id === selectedId) || sorted[0];
@@ -553,8 +574,8 @@ export function InboxScreen({ entries, letters, letterPaperStyle, onSavePostscri
                         </View>
                       </View>
                       <View style={styles.letterMeta}>
-                        <Text style={styles.letterMetaText}>받은 날짜 {formatDateLabel(selected.deliveredAt)}</Text>
-                        <Text style={styles.letterMetaText}>기록 기간 {formatPeriodLabel(selected.periodLabel)}</Text>
+                        <Text style={[styles.letterMetaText, { color: theme.muted }]}>받은 날짜 {formatDateLabel(selected.deliveredAt)}</Text>
+                        <Text style={[styles.letterMetaText, { color: theme.muted }]}>기록 기간 {formatPeriodLabel(selected.periodLabel)}</Text>
                       </View>
                       <View style={[styles.letterContentArea, letterPaperStyle === "cloudTitle" && { backgroundColor: theme.soft, padding: 16, borderRadius: 8 }]}>
                         <View style={styles.bodyWrap}>
@@ -630,10 +651,10 @@ export function InboxScreen({ entries, letters, letterPaperStyle, onSavePostscri
       {sorted.length ? (
         Object.entries(groups).map(([label, items]) => (
           <View key={label} style={styles.group}>
-            <Text style={styles.month}>{label}</Text>
+            <Text style={[styles.month, { color: theme.text }]}>{label}</Text>
             <View style={styles.grid}>
               {items.map((letter) => (
-                <Pressable key={letter.id} style={styles.card} onPress={() => {
+                <Pressable key={letter.id} style={[styles.card, { borderColor: theme.border, backgroundColor: theme.card }]} onPress={() => {
                   setPostscript(letter.postscript || "");
                   setSelected(letter);
                   setPageIndex(0);
@@ -642,15 +663,15 @@ export function InboxScreen({ entries, letters, letterPaperStyle, onSavePostscri
                   <View style={styles.iconFrame}>
                     <ArchiveLetterSymbol />
                   </View>
-                  <Text style={styles.keyword}>{archiveTitle(letter)}</Text>
-                  <Text style={[styles.date, { color: theme.tint }]}>{dateKey(letter.deliveredAt)}</Text>
+                  <Text style={[styles.keyword, { color: theme.text }]}>{archiveTitle(letter)}</Text>
+                  <Text style={[styles.date, { color: theme.muted }]}>{dateKey(letter.deliveredAt)}</Text>
                 </Pressable>
               ))}
             </View>
           </View>
         ))
       ) : (
-        <Text style={styles.empty}>아직 도착한 편지가 없어.</Text>
+        <Text style={[styles.empty, { color: theme.muted }]}>아직 도착한 편지가 없어.</Text>
       )}
     </Screen>
   );

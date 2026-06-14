@@ -2,7 +2,7 @@ import { User } from "@supabase/supabase-js";
 import { AppState, Entry, Letter, Mood, NotificationSettings } from "../types/domain";
 import { normalizeEnergyPercent } from "./energyColors";
 import { createId, isUuid } from "./ids";
-import { normalizeLetterPaperStyle } from "./storage";
+import { normalizeColorTheme, normalizeLetterPaperStyle } from "./storage";
 import { supabase } from "./supabase";
 
 type EntryRow = {
@@ -250,7 +250,7 @@ export async function pullAppState(userId: string, local: AppState): Promise<App
     entries: ((entriesResult.data || []) as EntryRow[]).map(rowToEntry),
     letters: ((lettersResult.data || []) as LetterRow[]).map(rowToLetter),
     settings: notificationResult.data ? rowToSettings(notificationResult.data as NotificationSettingsRow) : local.settings,
-    theme: preferences.theme || local.theme,
+    theme: normalizeColorTheme(preferences.theme || local.theme),
     energyColorMode: preferences.energyColorMode || local.energyColorMode,
     calendarEnergyMode: preferences.calendarEnergyMode || local.calendarEnergyMode,
     targetMoods: preferences.targetMoods || local.targetMoods || [],

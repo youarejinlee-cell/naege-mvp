@@ -1,22 +1,30 @@
 import { useEffect, useMemo, useState } from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from "react-native";
 import { CloverBadge } from "../components/CloverBadge";
 import { Screen } from "../components/Screen";
 import { categoryForEntry, entryCategoryLabels, entryCategoryOptions } from "../lib/entryCategories";
 import { getEnergyLevel, normalizeEnergyPercent } from "../lib/energyColors";
-import { useAppTheme } from "../lib/theme";
+import { AppTheme, useAppTheme } from "../lib/theme";
+import { MoodCollectionContent } from "./MoodCollectionScreen";
 import { CalendarEnergyMode, EnergyColorMode, Entry, EntryCategory, Mood } from "../types/domain";
 
 type Props = {
   entries: Entry[];
   energyColorMode: EnergyColorMode;
   calendarMode: CalendarEnergyMode;
+  targetMoods: Mood[];
   focusDate?: string;
   onDeleteEntries: (entryIds: string[]) => void;
+  analysisOnly?: boolean;
 };
 
-type ViewMode = "calendar" | "analysis";
+type ViewMode = "calendar" | "collection";
 type SortDirection = "desc" | "asc";
+type AnalysisMode = "summary" | "category" | "energy" | "suggestion";
+type SummaryFilter =
+  | { type: "category"; label: string }
+  | { type: "date"; role: "high" | "low"; date: string }
+  | { type: "mood"; mood: Mood };
 
 const moodLabels: Record<Mood, string> = {
   calm: "😌 차분함",
@@ -102,11 +110,42 @@ function energyBin(energy: number): EnergyBin {
   return "high";
 }
 
-const moodCategoryColors = {
-  positive: "#2f8f54",
-  neutral: "#8c948b",
-  negative: "#d85b52"
-};
+function hexToRgb(hex: string) {
+  const normalized = hex.replace("#", "");
+  const value = parseInt(normalized.length === 3
+    ? normalized.split("").map((char) => char + char).join("")
+    : normalized, 16);
+  return {
+    r: (value >> 16) & 255,
+    g: (value >> 8) & 255,
+    b: value & 255
+  };
+}
+
+function rgba(hex: string, alpha: number) {
+  const { r, g, b } = hexToRgb(hex);
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+}
+
+function getMoodCategoryColors(theme: AppTheme) {
+  if (theme.isDark) {
+    return {
+      positive: "#111111",
+      neutral: "#555555",
+      negative: "#cfcfcf",
+      selectedBackground: "rgba(17, 17, 17, 0.1)",
+      selectedBorder: "rgba(17, 17, 17, 0.32)"
+    };
+  }
+
+  return {
+    positive: theme.tint,
+    neutral: rgba(theme.tint, 0.52),
+    negative: rgba(theme.tint, 0.2),
+    selectedBackground: rgba(theme.tint, 0.1),
+    selectedBorder: rgba(theme.tint, 0.3)
+  };
+}
 
 function dateKey(value: string | Date) {
   if (typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value)) return value;
@@ -121,6 +160,11 @@ function monthKey(date: Date) {
 function formatDateLabel(key: string) {
   const [year, month, day] = key.split("-").map(Number);
   return `${year}년 ${month}월 ${day}일`;
+}
+
+function formatMonthDayLabel(key: string) {
+  const [, month, day] = key.split("-").map(Number);
+  return `${month}월 ${day}일`;
 }
 
 function formatTimeLabel(value: string) {
@@ -171,6 +215,7 @@ function dayEnergy(entries: Entry[], mode: CalendarEnergyMode) {
 
 function summarize(entries: Entry[]) {
   const moodRanking = getMoodRanking(entries);
+  const moodRatio = getMoodCategoryRatio(entries);
   const dayStats = getDayEnergyStats(entries);
 
   if (!entries.length) {
@@ -181,7 +226,8 @@ function summarize(entries: Entry[]) {
       bestDate: null,
       lowest: "-",
       lowestDate: null,
-      moodRanking
+      moodRanking,
+      moodRatio
     };
   }
 
@@ -191,11 +237,27 @@ function summarize(entries: Entry[]) {
   return {
     count: `${entries.length}개`,
     average: `${average.toFixed(1)}%`,
-    best: bestDay ? `${formatDateLabel(bestDay.date)} · 평균 ${bestDay.average.toFixed(1)}%` : "-",
+    best: bestDay ? `${formatMonthDayLabel(bestDay.date)} · 평균 ${bestDay.average.toFixed(1)}%` : "-",
     bestDate: bestDay?.date || null,
-    lowest: lowestDay ? `${formatDateLabel(lowestDay.date)} · 평균 ${lowestDay.average.toFixed(1)}%` : "-",
+    lowest: lowestDay ? `${formatMonthDayLabel(lowestDay.date)} · 평균 ${lowestDay.average.toFixed(1)}%` : "-",
     lowestDate: lowestDay?.date || null,
-    moodRanking
+    moodRanking,
+    moodRatio
+  };
+}
+
+function getMoodCategoryRatio(entries: Entry[]) {
+  const counts = entries.reduce<Record<MoodCategory, number>>((acc, entry) => {
+    const category = moodCategory(entry.mood);
+    acc[category] += 1;
+    return acc;
+  }, { positive: 0, neutral: 0, negative: 0 });
+
+  return {
+    positive: counts.positive,
+    neutral: counts.neutral,
+    negative: counts.negative,
+    total: entries.length
   };
 }
 
@@ -276,8 +338,80 @@ function categoryRanking(entries: Entry[]) {
     }))
     .filter((item) => item.count > 0)
     .sort((a, b) => b.count - a.count || b.latest - a.latest)
-    .slice(0, 2)
+    .slice(0, 3)
     .map((item) => item.label);
+}
+
+function sameSummaryFilter(left: SummaryFilter | null, right: SummaryFilter) {
+  if (!left || left.type !== right.type) return false;
+  if (left.type === "category" && right.type === "category") return left.label === right.label;
+  if (left.type === "date" && right.type === "date") return left.role === right.role && left.date === right.date;
+  if (left.type === "mood" && right.type === "mood") return left.mood === right.mood;
+  return false;
+}
+
+function summaryFilterTitle(filter: SummaryFilter | null) {
+  if (!filter) return "";
+  if (filter.type === "category") return `${filter.label} 기록`;
+  if (filter.type === "date") return filter.role === "high" ? "에너지를 많이 소진한 날의 기록" : "에너지를 아낀 날의 기록";
+  return `${moodLabels[filter.mood]} 기록`;
+}
+
+function entriesForSummaryFilter(entries: Entry[], filter: SummaryFilter | null) {
+  if (!filter) return [];
+  return entries
+    .filter((entry) => {
+      if (filter.type === "category") {
+        const category = categoryForEntry(entry);
+        return category ? entryCategoryLabels[category] === filter.label : false;
+      }
+      if (filter.type === "date") return dateKey(entry.createdAt) === filter.date;
+      return entry.mood === filter.mood;
+    })
+    .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+}
+
+function categoryDistribution(entries: Entry[]) {
+  const counts = entries.reduce<Record<EntryCategory, {
+    count: number;
+    latest: number;
+    energySum: number;
+    positive: number;
+    neutral: number;
+    negative: number;
+  }>>((acc, entry) => {
+    const category = categoryForEntry(entry);
+    if (!category) return acc;
+    const latest = new Date(entry.createdAt).getTime();
+    const current = acc[category] || { count: 0, latest: 0, energySum: 0, positive: 0, neutral: 0, negative: 0 };
+    const moodType = moodCategory(entry.mood);
+    acc[category] = {
+      count: current.count + 1,
+      latest: Math.max(current.latest, latest),
+      energySum: current.energySum + normalizeEnergyPercent(entry.energy),
+      positive: current.positive + (moodType === "positive" ? 1 : 0),
+      neutral: current.neutral + (moodType === "neutral" ? 1 : 0),
+      negative: current.negative + (moodType === "negative" ? 1 : 0)
+    };
+    return acc;
+  }, {} as Record<EntryCategory, { count: number; latest: number; energySum: number; positive: number; neutral: number; negative: number }>);
+
+  const total = Object.values(counts).reduce((sum, item) => sum + item.count, 0);
+  const items = entryCategoryOptions
+    .map((option, index) => ({
+      key: option.key,
+      label: entryCategoryLabels[option.key],
+      count: counts[option.key]?.count || 0,
+      latest: counts[option.key]?.latest || 0,
+      averageEnergy: counts[option.key]?.count ? counts[option.key].energySum / counts[option.key].count : 0,
+      positive: counts[option.key]?.positive || 0,
+      neutral: counts[option.key]?.neutral || 0,
+      negative: counts[option.key]?.negative || 0
+    }))
+    .filter((item) => item.count > 0)
+    .sort((a, b) => b.count - a.count || b.latest - a.latest);
+
+  return { total, items };
 }
 
 const fallbackSuggestions = [
@@ -302,6 +436,8 @@ function analysisSuggestions(entries: Entry[]) {
 }
 
 function EnergyMoodChart({ entries }: { entries: Entry[] }) {
+  const theme = useAppTheme();
+  const moodCategoryColors = getMoodCategoryColors(theme);
   const sorted = [...entries].sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
   const [selectedBin, setSelectedBin] = useState<{ category: MoodCategory; energyBin: EnergyBin }>({
     category: "positive",
@@ -361,7 +497,10 @@ function EnergyMoodChart({ entries }: { entries: Entry[] }) {
                         width: `${bin.width}%`,
                         height: "33.333%"
                       },
-                      selected && styles.chartRegionSelected
+                      selected && {
+                        backgroundColor: moodCategoryColors.selectedBackground,
+                        borderColor: moodCategoryColors.selectedBorder
+                      }
                     ]}
                     onPress={() => setSelectedBin({ category, energyBin: bin.key })}
                   >
@@ -416,7 +555,7 @@ function EnergyMoodChart({ entries }: { entries: Entry[] }) {
             <View key={entry.id} style={styles.chartSelectedEntry}>
               <View style={styles.chartSelectedMeta}>
                 <Text style={styles.chartSelectedMood}>{moodLabels[entry.mood]}</Text>
-                <Text style={styles.chartSelectedTime}>{formatDateLabel(dateKey(entry.createdAt))} · {formatTimeLabel(entry.createdAt)}</Text>
+                <Text style={styles.chartSelectedTime}>{formatMonthDayLabel(dateKey(entry.createdAt))} · {formatTimeLabel(entry.createdAt)}</Text>
               </View>
               <Text style={[styles.chartSelectedEnergy, { color: moodCategoryColors[moodCategory(entry.mood)] }]}>쓴 에너지 {normalizeEnergyPercent(entry.energy)}%</Text>
               <Text style={styles.chartSelectedText}>{entry.text}</Text>
@@ -435,6 +574,189 @@ function EnergyMoodChart({ entries }: { entries: Entry[] }) {
   );
 }
 
+function CategoryDistributionCard({ entries }: { entries: Entry[] }) {
+  const theme = useAppTheme();
+  const moodCategoryColors = getMoodCategoryColors(theme);
+  const { width } = useWindowDimensions();
+  const distribution = categoryDistribution(entries);
+  const slideWidth = Math.max(width - 92, 260);
+  const energyItems = [...distribution.items].sort((a, b) => b.averageEnergy - a.averageEnergy || b.count - a.count);
+  const moodRatioItems = [...distribution.items].sort((a, b) => {
+    const positiveRatioA = a.count ? a.positive / a.count : 0;
+    const positiveRatioB = b.count ? b.positive / b.count : 0;
+    return positiveRatioB - positiveRatioA || b.positive - a.positive || b.count - a.count || b.latest - a.latest;
+  });
+  const totalAverageEnergy = energyItems.reduce((sum, item) => sum + item.averageEnergy, 0);
+  const totalMoodCounts = distribution.items.reduce(
+    (totals, item) => ({
+      positive: totals.positive + item.positive,
+      neutral: totals.neutral + item.neutral,
+      negative: totals.negative + item.negative
+    }),
+    { positive: 0, neutral: 0, negative: 0 }
+  );
+  const totalPositive = distribution.total ? Math.round((totalMoodCounts.positive / distribution.total) * 100) : 0;
+  const totalNeutral = distribution.total ? Math.round((totalMoodCounts.neutral / distribution.total) * 100) : 0;
+  const totalNegative = distribution.total ? Math.max(0, 100 - totalPositive - totalNeutral) : 0;
+
+  return (
+    <View style={styles.categoryChartBox}>
+      {distribution.items.length ? (
+        <ScrollView
+          horizontal
+          pagingEnabled
+          showsHorizontalScrollIndicator={false}
+          decelerationRate="fast"
+          snapToInterval={slideWidth + 10}
+          contentContainerStyle={styles.categorySlides}
+        >
+          <View style={[styles.categorySlide, { width: slideWidth }]}>
+            <Text style={styles.categorySlideTitle}>개수/비율 분석</Text>
+            <View style={styles.categoryLegendHeader}>
+              <View style={styles.categoryRankSpacer} />
+              <Text style={[styles.categoryLegendHeadText, styles.categoryLegendLabel]}>카테고리</Text>
+              <View style={styles.categoryLegendMetricWide}>
+                <Text style={[styles.categoryLegendHeadText, styles.categoryLegendMetricHalf]}>개수</Text>
+                <Text style={[styles.categoryLegendHeadText, styles.categoryLegendMetricHalf]}>비율</Text>
+              </View>
+            </View>
+            {distribution.items.map((item, index) => (
+              <View key={item.key} style={styles.categoryLegendItem}>
+                <View style={[styles.categoryRankBadge, { backgroundColor: "#111111" }]}>
+                  <Text style={styles.categoryRankText}>{index + 1}</Text>
+                </View>
+                <Text style={styles.categoryLegendLabel} numberOfLines={1}>{item.label}</Text>
+                <View style={styles.categoryLegendMetricWide}>
+                  <Text style={styles.categoryLegendMetricHalf}>{item.count}개</Text>
+                  <Text style={styles.categoryLegendMetricHalf}>{Math.round((item.count / distribution.total) * 100)}%</Text>
+                </View>
+              </View>
+            ))}
+            <View style={[styles.categoryLegendItem, styles.categoryTotalRow]}>
+              <View style={styles.categoryRankSpacer} />
+              <Text style={styles.categoryLegendLabel}>합계</Text>
+              <View style={styles.categoryLegendMetricWide}>
+                <Text style={styles.categoryLegendMetricHalf}>{distribution.total}개</Text>
+                <Text style={styles.categoryLegendMetricHalf}>100%</Text>
+              </View>
+            </View>
+          </View>
+
+          <View style={[styles.categorySlide, { width: slideWidth }]}>
+            <Text style={styles.categorySlideTitle}>에너지 사용 분석</Text>
+            <View style={styles.categoryLegendHeader}>
+              <View style={styles.categoryRankSpacer} />
+              <Text style={[styles.categoryLegendHeadText, styles.categoryLegendLabel]}>카테고리</Text>
+              <View style={styles.categoryLegendMetricWide}>
+                <Text style={[styles.categoryLegendHeadText, styles.categoryLegendMetricHalf]}>평균 에너지</Text>
+                <Text style={[styles.categoryLegendHeadText, styles.categoryLegendMetricHalf]}>차지 비중</Text>
+              </View>
+            </View>
+            {energyItems.map((item, index) => (
+              <View key={item.key} style={styles.categoryLegendItem}>
+                <View style={[styles.categoryRankBadge, { backgroundColor: "#111111" }]}>
+                  <Text style={styles.categoryRankText}>{index + 1}</Text>
+                </View>
+                <Text style={styles.categoryLegendLabel}>{item.label}</Text>
+                <View style={styles.categoryLegendMetricWide}>
+                  <Text style={styles.categoryLegendMetricHalf}>{item.averageEnergy.toFixed(0)}%</Text>
+                  <Text style={styles.categoryLegendMetricHalf}>
+                    {totalAverageEnergy ? Math.round((item.averageEnergy / totalAverageEnergy) * 100) : 0}%
+                  </Text>
+                </View>
+              </View>
+            ))}
+            <View style={[styles.categoryLegendItem, styles.categoryTotalRow]}>
+              <View style={styles.categoryRankSpacer} />
+              <Text style={styles.categoryLegendLabel}>합계</Text>
+              <View style={styles.categoryLegendMetricWide}>
+                <Text style={styles.categoryLegendMetricHalf}>{totalAverageEnergy.toFixed(0)}%</Text>
+                <Text style={styles.categoryLegendMetricHalf}>100%</Text>
+              </View>
+            </View>
+          </View>
+
+          <View style={[styles.categorySlide, { width: slideWidth }]}>
+            <Text style={styles.categorySlideTitle}>감정 비율 분석</Text>
+            <View style={styles.categoryLegendHeader}>
+              <View style={styles.categoryRankSpacer} />
+              <Text style={[styles.categoryLegendHeadText, styles.categoryLegendLabel]}>카테고리</Text>
+              <View style={styles.categoryLegendMetricWide}>
+                <Text style={[styles.categoryLegendHeadText, styles.categoryLegendMetricFull]}>감정 비율</Text>
+              </View>
+            </View>
+            {moodRatioItems.map((item, index) => {
+              const positive = item.count ? Math.round((item.positive / item.count) * 100) : 0;
+              const neutral = item.count ? Math.round((item.neutral / item.count) * 100) : 0;
+              const negative = item.count ? Math.max(0, 100 - positive - neutral) : 0;
+              return (
+                <View key={item.key} style={styles.categoryLegendItem}>
+                  <View style={[styles.categoryRankBadge, { backgroundColor: "#111111" }]}>
+                    <Text style={styles.categoryRankText}>{index + 1}</Text>
+                  </View>
+                  <Text style={styles.categoryLegendLabel}>{item.label}</Text>
+                  <View style={styles.categoryLegendMoodMetricWide}>
+                    <View style={styles.categoryLegendMoodBar}>
+                      <View
+                        style={[
+                          styles.categoryMoodRatioSegment,
+                          { flex: item.positive || 0.0001, backgroundColor: moodCategoryColors.positive }
+                        ]}
+                      />
+                      <View
+                        style={[
+                          styles.categoryMoodRatioSegment,
+                          { flex: item.neutral || 0.0001, backgroundColor: moodCategoryColors.neutral }
+                        ]}
+                      />
+                      <View
+                        style={[
+                          styles.categoryMoodRatioSegment,
+                          { flex: item.negative || 0.0001, backgroundColor: moodCategoryColors.negative }
+                        ]}
+                      />
+                    </View>
+                    <Text style={styles.categoryMoodRatioText}>긍 {positive}% · 중 {neutral}% · 부 {negative}%</Text>
+                  </View>
+                </View>
+              );
+            })}
+            <View style={[styles.categoryLegendItem, styles.categoryTotalRow]}>
+              <View style={styles.categoryRankSpacer} />
+              <Text style={styles.categoryLegendLabel}>전체</Text>
+              <View style={styles.categoryLegendMoodMetricWide}>
+                <View style={styles.categoryLegendMoodBar}>
+                  <View
+                    style={[
+                      styles.categoryMoodRatioSegment,
+                      { flex: totalMoodCounts.positive || 0.0001, backgroundColor: moodCategoryColors.positive }
+                    ]}
+                  />
+                  <View
+                    style={[
+                      styles.categoryMoodRatioSegment,
+                      { flex: totalMoodCounts.neutral || 0.0001, backgroundColor: moodCategoryColors.neutral }
+                    ]}
+                  />
+                  <View
+                    style={[
+                      styles.categoryMoodRatioSegment,
+                      { flex: totalMoodCounts.negative || 0.0001, backgroundColor: moodCategoryColors.negative }
+                    ]}
+                  />
+                </View>
+                <Text style={styles.categoryMoodRatioText}>긍 {totalPositive}% · 중 {totalNeutral}% · 부 {totalNegative}%</Text>
+              </View>
+            </View>
+          </View>
+        </ScrollView>
+      ) : (
+        <Text style={styles.categoryLegendEmpty}>기록이 쌓이면 카테고리 비중이 보여.</Text>
+      )}
+    </View>
+  );
+}
+
 function LegendDot({ color, label }: { color: string; label: string }) {
   return (
     <View style={styles.legendItem}>
@@ -444,7 +766,7 @@ function LegendDot({ color, label }: { color: string; label: string }) {
   );
 }
 
-export function CalendarScreen({ entries, energyColorMode, calendarMode, focusDate, onDeleteEntries }: Props) {
+export function CalendarScreen({ entries, energyColorMode, calendarMode, targetMoods, focusDate, onDeleteEntries, analysisOnly }: Props) {
   const theme = useAppTheme();
   const sortedEntries = useMemo(
     () => [...entries].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()),
@@ -452,6 +774,8 @@ export function CalendarScreen({ entries, energyColorMode, calendarMode, focusDa
   );
   const initialDate = sortedEntries[0]?.createdAt ? new Date(sortedEntries[0].createdAt) : new Date();
   const [viewMode, setViewMode] = useState<ViewMode>("calendar");
+  const [analysisMode, setAnalysisMode] = useState<AnalysisMode>("summary");
+  const [summaryFilter, setSummaryFilter] = useState<SummaryFilter | null>(null);
   const [selectedDate, setSelectedDate] = useState(dateKey(initialDate));
   const [visibleMonth, setVisibleMonth] = useState(new Date(initialDate.getFullYear(), initialDate.getMonth(), 1));
 
@@ -473,6 +797,14 @@ export function CalendarScreen({ entries, energyColorMode, calendarMode, focusDa
   const activeSummary = summarize(visibleMonthEntries);
   const activeCategories = categoryRanking(visibleMonthEntries);
   const activeSuggestions = analysisSuggestions(visibleMonthEntries);
+  const summaryFilterEntries = useMemo(
+    () => entriesForSummaryFilter(visibleMonthEntries, summaryFilter),
+    [visibleMonthEntries, summaryFilter]
+  );
+
+  useEffect(() => {
+    setSummaryFilter(null);
+  }, [visibleMonthKey]);
 
   const moveMonth = (delta: number) => {
     setVisibleMonth((current) => new Date(current.getFullYear(), current.getMonth() + delta, 1));
@@ -482,31 +814,105 @@ export function CalendarScreen({ entries, energyColorMode, calendarMode, focusDa
     const [year, month] = key.split("-").map(Number);
     setSelectedDate(key);
     setVisibleMonth(new Date(year, month - 1, 1));
-    setViewMode("calendar");
+    if (!analysisOnly) setViewMode("calendar");
+  };
+  const toggleSummaryFilter = (filter: SummaryFilter) => {
+    setSummaryFilter((current) => (sameSummaryFilter(current, filter) ? null : filter));
   };
 
   return (
-    <Screen eyebrow="CALENDAR" title="캘린더" lead="그날의 나는 무슨 생각을 했을까?">
-      <View style={[styles.switcher, { backgroundColor: theme.soft }]}>
-        <Pressable style={[styles.switchItem, viewMode === "calendar" && styles.switchActive]} onPress={() => setViewMode("calendar")}>
-          <Text style={[styles.switchText, viewMode === "calendar" && { color: theme.tint }]}>캘린더 보기</Text>
-        </Pressable>
-        <Pressable style={[styles.switchItem, viewMode === "analysis" && styles.switchActive]} onPress={() => setViewMode("analysis")}>
-          <Text style={[styles.switchText, viewMode === "analysis" && { color: theme.tint }]}>분석 보기</Text>
-        </Pressable>
-      </View>
+    <Screen
+      eyebrow={analysisOnly ? "ANALYSIS" : "CALENDAR"}
+      title={analysisOnly ? "분석 보기" : "캘린더"}
+      lead={analysisOnly ? "남긴 기록을 여러 각도에서 다시 볼 수 있어." : "그날의 나는 무슨 생각을 했을까?"}
+    >
+      {!analysisOnly ? (
+        <View style={[styles.switcher, { backgroundColor: theme.soft }]}>
+          <Pressable style={[styles.switchItem, viewMode === "calendar" && { backgroundColor: theme.card }]} onPress={() => setViewMode("calendar")}>
+            <Text style={[styles.switchText, { color: theme.muted }, viewMode === "calendar" && { color: theme.tint }]}>캘린더 보기</Text>
+          </Pressable>
+          <Pressable style={[styles.switchItem, viewMode === "collection" && { backgroundColor: theme.card }]} onPress={() => setViewMode("collection")}>
+            <Text style={[styles.switchText, { color: theme.muted }, viewMode === "collection" && { color: theme.tint }]}>모아보기</Text>
+          </Pressable>
+        </View>
+      ) : null}
 
-      <View style={styles.monthPanel}>
-        <Pressable style={[styles.arrow, { backgroundColor: theme.soft }]} onPress={() => moveMonth(-1)}>
-          <Text style={[styles.arrowText, { color: theme.tint }]}>‹</Text>
-        </Pressable>
-        <Text style={styles.month}>{monthKey(visibleMonth)}</Text>
-        <Pressable style={[styles.arrow, { backgroundColor: theme.soft }]} onPress={() => moveMonth(1)}>
-          <Text style={[styles.arrowText, { color: theme.tint }]}>›</Text>
-        </Pressable>
-      </View>
+      {analysisOnly || viewMode === "calendar" ? (
+        <View style={styles.monthPanel}>
+          <Pressable style={[styles.arrow, { backgroundColor: theme.soft }]} onPress={() => moveMonth(-1)}>
+            <Text style={[styles.arrowText, { color: theme.tint }]}>‹</Text>
+          </Pressable>
+          <Text style={styles.month}>{monthKey(visibleMonth)}</Text>
+          <Pressable style={[styles.arrow, { backgroundColor: theme.soft }]} onPress={() => moveMonth(1)}>
+            <Text style={[styles.arrowText, { color: theme.tint }]}>›</Text>
+          </Pressable>
+        </View>
+      ) : null}
 
-      {viewMode === "calendar" ? (
+      {analysisOnly ? (
+        <View style={[styles.analysisBox, { borderColor: theme.border, backgroundColor: theme.soft }]}>
+          <View style={[styles.analysisTabs, { backgroundColor: "#fff" }]}>
+            {([
+              ["summary", "요약"],
+              ["category", "기록 카테고리 분석"],
+              ["energy", "감정-에너지 분포"],
+              ["suggestion", "제안"]
+            ] as Array<[AnalysisMode, string]>).map(([key, label]) => (
+              <Pressable
+                key={key}
+                style={[styles.analysisTabItem, analysisMode === key && { backgroundColor: theme.soft }]}
+                onPress={() => setAnalysisMode(key)}
+              >
+                <Text style={[styles.analysisTabText, analysisMode === key && { color: theme.tint }]}>{label}</Text>
+              </Pressable>
+            ))}
+          </View>
+
+          {analysisMode === "summary" ? (
+            <>
+              <SummaryCard
+                summary={activeSummary}
+                embedded
+                padded
+                categories={activeCategories}
+                categoryTint={theme.tint}
+                categoryBorder={theme.border}
+                activeFilter={summaryFilter}
+                onToggleFilter={toggleSummaryFilter}
+              />
+              {summaryFilter ? (
+                <SummaryFilterResults
+                  title={summaryFilterTitle(summaryFilter)}
+                  entries={summaryFilterEntries}
+                  energyColorMode={energyColorMode}
+                />
+              ) : null}
+            </>
+          ) : null}
+
+          {analysisMode === "category" ? (
+            <CategoryDistributionCard entries={visibleMonthEntries} />
+          ) : null}
+
+          {analysisMode === "energy" ? (
+            <>
+              <Text style={styles.analysisDescription}>9개로 나뉜 각 영역에 어떤 기록이 있었는지 눌러봐</Text>
+              <EnergyMoodChart entries={visibleMonthEntries} />
+            </>
+          ) : null}
+
+          {analysisMode === "suggestion" ? (
+            <View style={styles.suggestionBox}>
+              <Text style={styles.summaryLabel}>이번 달 제안</Text>
+              <View style={styles.recommendationList}>
+                {activeSuggestions.slice(0, 4).map((item) => (
+                  <Text key={item} style={styles.recommendationText}>{item}</Text>
+                ))}
+              </View>
+            </View>
+          ) : null}
+        </View>
+      ) : viewMode === "calendar" ? (
         <>
           <View style={styles.panel}>
             <View style={styles.weekRow}>
@@ -552,7 +958,7 @@ export function CalendarScreen({ entries, energyColorMode, calendarMode, focusDa
           </View>
 
           <EntryList
-            title={`${formatDateLabel(selectedDate)} 기록`}
+            title={`${formatMonthDayLabel(selectedDate)} 기록`}
             entries={selectedEntries}
             compactDate
             energyColorMode={energyColorMode}
@@ -560,32 +966,7 @@ export function CalendarScreen({ entries, energyColorMode, calendarMode, focusDa
           />
         </>
       ) : (
-        <View style={[styles.analysisBox, { borderColor: theme.border, backgroundColor: theme.soft }]}>
-          <Text style={styles.analysisTitle}>요약</Text>
-          <SummaryCard summary={activeSummary} embedded padded onSelectDate={goToDate} />
-          <Text style={styles.analysisTitle}>감정-에너지 분포</Text>
-          <EnergyMoodChart entries={visibleMonthEntries} />
-          <View style={styles.analysisGrid}>
-            <View style={styles.analysisCell}>
-              <Text style={styles.summaryLabel}>자주 나타난 카테고리</Text>
-              <View style={styles.keywordRow}>
-                {(activeCategories.length ? activeCategories : ["-"]).map((item) => (
-                  <Text key={item} style={[styles.keywordPill, { color: theme.tint, borderColor: theme.border }]}>
-                    {item}
-                  </Text>
-                ))}
-              </View>
-            </View>
-            <View style={styles.analysisCell}>
-              <Text style={styles.summaryLabel}>이번 달 제안</Text>
-              <View style={styles.recommendationList}>
-                {activeSuggestions.slice(0, 2).map((item) => (
-                  <Text key={item} style={styles.recommendationText}>{item}</Text>
-                ))}
-              </View>
-            </View>
-          </View>
-        </View>
+        <MoodCollectionContent entries={entries} energyColorMode={energyColorMode} targetMoods={targetMoods} />
       )}
     </Screen>
   );
@@ -596,60 +977,249 @@ function SummaryCard({
   summary,
   embedded,
   padded,
-  onSelectDate
+  categories = [],
+  categoryTint,
+  categoryBorder,
+  activeFilter,
+  onToggleFilter
 }: {
   title?: string;
   summary: ReturnType<typeof summarize>;
   embedded?: boolean;
   padded?: boolean;
-  onSelectDate?: (date: string | null) => void;
+  categories?: string[];
+  categoryTint?: string;
+  categoryBorder?: string;
+  activeFilter?: SummaryFilter | null;
+  onToggleFilter?: (filter: SummaryFilter) => void;
 }) {
+  const theme = useAppTheme();
+  const highFilter = summary.bestDate ? ({ type: "date", role: "high", date: summary.bestDate } as SummaryFilter) : null;
+  const lowFilter = summary.lowestDate ? ({ type: "date", role: "low", date: summary.lowestDate } as SummaryFilter) : null;
+  const tagColor = theme.isDark ? "#111111" : categoryTint;
+  const tagBorder = theme.isDark ? "#4a4a4a" : categoryBorder;
+  const selectedTagBackground = theme.isDark ? "#111111" : categoryTint;
+  const selectedTagText = theme.isDark ? "#ffffff" : theme.inverseText;
+  const highSelected = Boolean(highFilter && sameSummaryFilter(activeFilter || null, highFilter));
+  const lowSelected = Boolean(lowFilter && sameSummaryFilter(activeFilter || null, lowFilter));
+
   return (
     <View style={[styles.summary, embedded && styles.summaryEmbedded, padded && styles.summaryPadded]}>
       {title ? <Text style={styles.summaryTitle}>{title}</Text> : null}
       <View style={styles.summaryItem}>
-        <Text style={styles.summaryLabel}>기록</Text>
+        <Text style={[styles.summaryLabel, styles.summaryMetricLabel]}>기록</Text>
         <Text style={styles.summaryValue}>{summary.count}</Text>
       </View>
       <View style={styles.summaryItem}>
+        <Text style={[styles.summaryLabel, styles.summaryMetricLabel]}>자주 나타난 카테고리</Text>
+        <View style={styles.keywordRow}>
+          {categories.length ? categories.map((item) => {
+            const filter = { type: "category", label: item } as SummaryFilter;
+            const selected = sameSummaryFilter(activeFilter || null, filter);
+            return (
+              <Pressable key={item} onPress={() => onToggleFilter?.(filter)}>
+                <Text
+                  style={[
+                    styles.keywordPill,
+                    tagColor ? { color: tagColor, borderColor: tagBorder } : null,
+                    selected && { color: selectedTagText, borderColor: selectedTagBackground, backgroundColor: selectedTagBackground }
+                  ]}
+                >
+                  {item}
+                </Text>
+              </Pressable>
+            );
+          }) : (
+            <Text style={styles.summaryValueSmall}>-</Text>
+          )}
+        </View>
+      </View>
+      <View style={styles.summaryItemWide}>
         <Text style={styles.summaryLabel}>평균 에너지 사용량</Text>
         <Text style={styles.summaryValue}>{summary.average}</Text>
       </View>
-      <View style={styles.summaryItemWide}>
-        <Text style={styles.summaryLabel}>에너지를 많이 소진한 날</Text>
-        <View style={styles.summaryValueActionRow}>
-          <Text style={[styles.summaryValueSmall, styles.summaryValueActionText]}>{summary.best}</Text>
-          {summary.bestDate ? (
-            <Pressable style={styles.summaryGoButton} onPress={() => onSelectDate?.(summary.bestDate)}>
-              <Text style={styles.summaryGoText}>›</Text>
-            </Pressable>
-          ) : null}
-        </View>
-      </View>
-      <View style={styles.summaryItemWide}>
-        <Text style={styles.summaryLabel}>에너지를 아낀 날</Text>
-        <View style={styles.summaryValueActionRow}>
-          <Text style={[styles.summaryValueSmall, styles.summaryValueActionText]}>{summary.lowest}</Text>
-          {summary.lowestDate ? (
-            <Pressable style={styles.summaryGoButton} onPress={() => onSelectDate?.(summary.lowestDate)}>
-              <Text style={styles.summaryGoText}>›</Text>
-            </Pressable>
-          ) : null}
-        </View>
-      </View>
+      <Pressable
+        disabled={!highFilter}
+        style={[
+          styles.summaryItemWide,
+          styles.summaryFilterButton,
+          { borderColor: theme.border, backgroundColor: theme.cardAlt },
+          highSelected && { borderColor: selectedTagBackground, backgroundColor: selectedTagBackground }
+        ]}
+        onPress={() => highFilter && onToggleFilter?.(highFilter)}
+      >
+        <Text style={[styles.summaryLabel, { color: highSelected ? selectedTagText : theme.muted }]}>에너지를 많이 소진한 날</Text>
+        <Text style={[styles.summaryValueSmall, { color: highSelected ? selectedTagText : theme.text }]}>{summary.best}</Text>
+      </Pressable>
+      <Pressable
+        disabled={!lowFilter}
+        style={[
+          styles.summaryItemWide,
+          styles.summaryFilterButton,
+          { borderColor: theme.border, backgroundColor: theme.cardAlt },
+          lowSelected && { borderColor: selectedTagBackground, backgroundColor: selectedTagBackground }
+        ]}
+        onPress={() => lowFilter && onToggleFilter?.(lowFilter)}
+      >
+        <Text style={[styles.summaryLabel, { color: lowSelected ? selectedTagText : theme.muted }]}>에너지를 아낀 날</Text>
+        <Text style={[styles.summaryValueSmall, { color: lowSelected ? selectedTagText : theme.text }]}>{summary.lowest}</Text>
+      </Pressable>
       <View style={styles.summaryItemWide}>
         <Text style={styles.summaryLabel}>가장 많았던 감정</Text>
         {summary.moodRanking.length ? (
           <View style={styles.moodRankRow}>
-            {summary.moodRanking.map((item) => (
-              <View key={item.mood} style={styles.moodRankChip}>
-                <Text style={styles.moodRankText}>{moodLabels[item.mood]}</Text>
-              </View>
-            ))}
+            {summary.moodRanking.map((item) => {
+              const filter = { type: "mood", mood: item.mood } as SummaryFilter;
+              const selected = sameSummaryFilter(activeFilter || null, filter);
+              return (
+                <Pressable
+                  key={item.mood}
+                  style={[
+                    styles.moodRankChip,
+                    selected && { borderColor: selectedTagBackground, backgroundColor: selectedTagBackground }
+                  ]}
+                  onPress={() => onToggleFilter?.(filter)}
+                >
+                  <Text style={[styles.moodRankText, selected && { color: selectedTagText }]}>{moodLabels[item.mood]}</Text>
+                </Pressable>
+              );
+            })}
           </View>
         ) : (
           <Text style={styles.summaryValueSmall}>-</Text>
         )}
+      </View>
+      <View style={styles.summaryItemWide}>
+        <Text style={styles.summaryLabel}>감정 분포</Text>
+        <MoodRatioBar ratio={summary.moodRatio} />
+      </View>
+    </View>
+  );
+}
+
+function SummaryFilterResults({
+  title,
+  entries,
+  energyColorMode
+}: {
+  title: string;
+  entries: Entry[];
+  energyColorMode: EnergyColorMode;
+}) {
+  const theme = useAppTheme();
+
+  return (
+    <View style={[styles.summaryResults, { backgroundColor: theme.card }]}>
+      <Text style={[styles.summaryResultsTitle, { color: theme.text }]}>{title}</Text>
+      {entries.length ? entries.map((entry) => (
+        <RecordCard
+          key={entry.id}
+          entry={entry}
+          energyColorMode={energyColorMode}
+          dateLabel={`${formatMonthDayLabel(dateKey(entry.createdAt))} · ${formatTimeLabel(entry.createdAt)}`}
+        />
+      )) : (
+        <Text style={[styles.empty, { color: theme.muted }]}>해당 기록이 없어.</Text>
+      )}
+    </View>
+  );
+}
+
+function RecordCard({
+  entry,
+  energyColorMode,
+  dateLabel,
+  selecting,
+  selected,
+  onPress
+}: {
+  entry: Entry;
+  energyColorMode: EnergyColorMode;
+  dateLabel: string;
+  selecting?: boolean;
+  selected?: boolean;
+  onPress?: () => void;
+}) {
+  const theme = useAppTheme();
+  const entryEnergy = normalizeEnergyPercent(entry.energy);
+  const entryEnergyLevel = getEnergyLevel(energyColorMode, entryEnergy, theme.tint);
+  const entryCategory = categoryForEntry(entry);
+
+  return (
+    <Pressable
+      disabled={!selecting}
+      style={[
+        styles.card,
+        { borderColor: theme.border, backgroundColor: theme.card },
+        selecting && styles.cardSelectable,
+        selected && { borderColor: theme.tint, backgroundColor: theme.soft }
+      ]}
+      onPress={onPress}
+    >
+      <View style={styles.entryMeta}>
+        <View style={styles.moodEnergyGroup}>
+          {selecting ? (
+            <View style={[styles.checkCircle, selected && { borderColor: theme.tint, backgroundColor: theme.tint }]}>
+              <Text style={[styles.checkText, { color: theme.inverseText }]}>{selected ? "✓" : ""}</Text>
+            </View>
+          ) : null}
+          {entryCategory ? (
+            <Text style={[styles.categoryChip, { color: theme.tint, backgroundColor: theme.soft }]}>{entryCategoryLabels[entryCategory]}</Text>
+          ) : null}
+          <CloverBadge
+            color={entryEnergyLevel.color}
+            label={String(entryEnergy)}
+            size={25}
+            textColor={entryEnergyLevel.textColor}
+            shadowOpacity={0.18}
+            glowColor="rgba(85, 85, 85, 0.08)"
+          />
+          <Text style={[styles.mood, { color: theme.text }]}>{moodLabels[entry.mood]}</Text>
+        </View>
+        <Text style={[styles.date, { color: theme.muted }]}>{dateLabel}</Text>
+      </View>
+      <Text style={[styles.text, { color: theme.text }]}>{entry.text}</Text>
+    </Pressable>
+  );
+}
+
+function MoodRatioBar({ ratio }: { ratio: ReturnType<typeof getMoodCategoryRatio> }) {
+  const theme = useAppTheme();
+  const moodCategoryColors = getMoodCategoryColors(theme);
+
+  if (!ratio.total) {
+    return <Text style={styles.summaryValueSmall}>-</Text>;
+  }
+
+  const items: Array<{ key: MoodCategory; label: string; value: number; color: string }> = [
+    { key: "positive", label: "긍정", value: ratio.positive, color: moodCategoryColors.positive },
+    { key: "neutral", label: "중간", value: ratio.neutral, color: moodCategoryColors.neutral },
+    { key: "negative", label: "부정", value: ratio.negative, color: moodCategoryColors.negative }
+  ];
+
+  return (
+    <View style={styles.moodRatioBox}>
+      <View style={styles.moodRatioBar}>
+        {items.map((item) => (
+          <View
+            key={item.key}
+            style={[
+              styles.moodRatioSegment,
+              {
+                flex: item.value || 0.0001,
+                backgroundColor: item.color
+              }
+            ]}
+          />
+        ))}
+      </View>
+      <View style={styles.moodRatioLegend}>
+        {items.map((item) => (
+          <View key={item.key} style={styles.moodRatioLegendItem}>
+            <View style={[styles.legendDot, { backgroundColor: item.color }]} />
+            <Text style={styles.moodRatioLegendText}>{item.label} {Math.round((item.value / ratio.total) * 100)}%</Text>
+          </View>
+        ))}
       </View>
     </View>
   );
@@ -676,6 +1246,7 @@ function EntryList({
   const sorted = [...entries].sort((a, b) => {
     const left = new Date(a.createdAt).getTime();
     const right = new Date(b.createdAt).getTime();
+    if (compactDate) return left - right;
     return sortDirection === "desc" ? right - left : left - right;
   });
 
@@ -704,10 +1275,35 @@ function EntryList({
     <View style={styles.list}>
       {title ? (
         <View style={styles.listHeader}>
-          <Text style={styles.listTitle}>{title}</Text>
+          <Text style={[styles.listTitle, { color: theme.text }]}>{title}</Text>
+          {compactDate && sorted.length ? (
+            <View style={styles.listActionsInline}>
+              {selecting ? (
+                <>
+                  <Pressable style={styles.textAction} onPress={cancelSelect}>
+                    <Text style={[styles.textActionLabel, { color: theme.muted }]}>취소</Text>
+                  </Pressable>
+                  <Pressable
+                    disabled={!selectedIds.length}
+                    style={styles.textAction}
+                    onPress={() => setConfirmingDelete(true)}
+                  >
+                    <Text style={[styles.deleteActionLabel, !selectedIds.length && styles.disabledActionLabel]}>삭제</Text>
+                  </Pressable>
+                </>
+              ) : (
+                <Pressable
+                  style={styles.textAction}
+                  onPress={() => setSelecting(true)}
+                >
+                  <Text style={[styles.textActionLabel, { color: theme.tint }]}>선택</Text>
+                </Pressable>
+              )}
+            </View>
+          ) : null}
         </View>
       ) : null}
-      {sorted.length ? (
+      {sorted.length && !compactDate ? (
         <View style={styles.listControlRow}>
           <View style={[styles.orderSwitcher, { backgroundColor: theme.soft }]}>
             <Pressable style={[styles.orderButton, sortDirection === "desc" && styles.orderButtonActive]} onPress={() => setSortDirection("desc")}>
@@ -721,7 +1317,7 @@ function EntryList({
             {selecting ? (
               <>
                 <Pressable style={styles.textAction} onPress={cancelSelect}>
-                  <Text style={styles.textActionLabel}>취소</Text>
+                  <Text style={[styles.textActionLabel, { color: theme.muted }]}>취소</Text>
                 </Pressable>
                 <Pressable
                   disabled={!selectedIds.length}
@@ -756,45 +1352,19 @@ function EntryList({
         </View>
       ) : null}
       {sorted.length ? (
-        sorted.map((entry) => {
-          const entryEnergy = normalizeEnergyPercent(entry.energy);
-          const entryEnergyLevel = getEnergyLevel(energyColorMode, entryEnergy, theme.tint);
-          return (
-          <Pressable
+        sorted.map((entry) => (
+          <RecordCard
             key={entry.id}
-            disabled={!selecting}
-            style={[
-              styles.card,
-              selecting && styles.cardSelectable,
-              selectedIds.includes(entry.id) && { borderColor: theme.tint, backgroundColor: theme.soft }
-            ]}
+            entry={entry}
+            energyColorMode={energyColorMode}
+            dateLabel={compactDate ? formatTimeLabel(entry.createdAt) : `${formatDateLabel(dateKey(entry.createdAt))} · ${formatTimeLabel(entry.createdAt)}`}
+            selecting={selecting}
+            selected={selectedIds.includes(entry.id)}
             onPress={() => toggleSelect(entry.id)}
-          >
-            <View style={styles.entryMeta}>
-              <View style={styles.moodEnergyGroup}>
-                {selecting ? (
-                  <View style={[styles.checkCircle, selectedIds.includes(entry.id) && { borderColor: theme.tint, backgroundColor: theme.tint }]}>
-                    <Text style={styles.checkText}>{selectedIds.includes(entry.id) ? "✓" : ""}</Text>
-                  </View>
-                ) : null}
-                <Text style={styles.mood}>{moodLabels[entry.mood]}</Text>
-                <CloverBadge
-                  color={entryEnergyLevel.color}
-                  label={String(entryEnergy)}
-                  size={25}
-                  textColor={entryEnergyLevel.textColor}
-                  shadowOpacity={0.18}
-                  glowColor="rgba(85, 85, 85, 0.08)"
-                />
-              </View>
-              <Text style={styles.date}>{compactDate ? formatTimeLabel(entry.createdAt) : `${formatDateLabel(dateKey(entry.createdAt))} · ${formatTimeLabel(entry.createdAt)}`}</Text>
-            </View>
-            <Text style={styles.text}>{entry.text}</Text>
-          </Pressable>
-          );
-        })
+          />
+        ))
       ) : (
-        <Text style={styles.empty}>남긴 기록이 없어.</Text>
+        <Text style={[styles.empty, { color: theme.muted }]}>남긴 기록이 없어.</Text>
       )}
     </View>
   );
@@ -953,10 +1523,20 @@ const styles = StyleSheet.create({
     width: "100%",
     gap: 4
   },
+  summaryFilterButton: {
+    padding: 10,
+    borderWidth: 1,
+    borderColor: "#dfe8da",
+    borderRadius: 8,
+    backgroundColor: "#fbfdf8"
+  },
   summaryLabel: {
     color: "#657064",
     fontSize: 11,
     fontWeight: "900"
+  },
+  summaryMetricLabel: {
+    minHeight: 18
   },
   summaryValue: {
     color: "#18241b",
@@ -1009,16 +1589,129 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: "800"
   },
+  moodRatioBox: {
+    gap: 8
+  },
+  moodRatioBar: {
+    height: 14,
+    flexDirection: "row",
+    overflow: "hidden",
+    borderRadius: 999,
+    backgroundColor: "#eef1ed"
+  },
+  moodRatioSegment: {
+    height: "100%"
+  },
+  moodRatioLegend: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8
+  },
+  moodRatioLegendItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4
+  },
+  moodRatioLegendText: {
+    color: "#657064",
+    fontSize: 11,
+    fontWeight: "900"
+  },
+  summaryResults: {
+    gap: 8,
+    padding: 12,
+    borderRadius: 8,
+    backgroundColor: "#fff"
+  },
+  summaryResultsTitle: {
+    color: "#18241b",
+    fontSize: 14,
+    fontWeight: "900"
+  },
+  summaryResultCard: {
+    gap: 8,
+    padding: 10,
+    borderWidth: 1,
+    borderColor: "#dfe8da",
+    borderRadius: 8,
+    backgroundColor: "#fbfdf8"
+  },
+  summaryResultMeta: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 8
+  },
+  summaryResultMetaLeft: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6
+  },
+  summaryResultMood: {
+    flexShrink: 1,
+    color: "#657064",
+    fontSize: 12,
+    fontWeight: "900"
+  },
+  summaryResultTime: {
+    color: "#8c948b",
+    fontSize: 11,
+    fontWeight: "800"
+  },
+  summaryResultText: {
+    color: "#18241b",
+    fontSize: 13,
+    lineHeight: 19,
+    fontWeight: "700"
+  },
   analysisBox: {
     gap: 12,
     padding: 14,
     borderWidth: 1,
     borderRadius: 8
   },
+  analysisTabs: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 4,
+    padding: 4,
+    borderRadius: 8,
+    backgroundColor: "#fff"
+  },
+  analysisTabItem: {
+    width: "49%",
+    minHeight: 38,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 6,
+    paddingVertical: 8,
+    borderRadius: 7
+  },
+  analysisTabText: {
+    color: "#657064",
+    fontSize: 11,
+    lineHeight: 15,
+    fontWeight: "900",
+    textAlign: "center"
+  },
+  suggestionBox: {
+    gap: 10,
+    padding: 14,
+    borderRadius: 8,
+    backgroundColor: "#fff"
+  },
   analysisTitle: {
     color: "#18241b",
     fontSize: 17,
     fontWeight: "900"
+  },
+  analysisDescription: {
+    marginTop: -6,
+    color: "#657064",
+    fontSize: 12,
+    lineHeight: 18,
+    fontWeight: "800"
   },
   analysisGrid: {
     flexDirection: "row",
@@ -1030,6 +1723,193 @@ const styles = StyleSheet.create({
     paddingTop: 10,
     borderTopWidth: 1,
     borderTopColor: "rgba(24, 36, 27, 0.08)"
+  },
+  categoryChartBox: {
+    padding: 0,
+    borderRadius: 8,
+    backgroundColor: "#fff"
+  },
+  categorySlides: {
+    gap: 10,
+    paddingHorizontal: 8,
+    paddingVertical: 12
+  },
+  categorySlide: {
+    minHeight: 302,
+    gap: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 12,
+    borderRadius: 8,
+    backgroundColor: "#fbfdf8"
+  },
+  categorySlideTitle: {
+    color: "#18241b",
+    fontSize: 15,
+    fontWeight: "900"
+  },
+  categoryLegend: {
+    gap: 7
+  },
+  categoryLegendHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    minHeight: 22,
+    paddingBottom: 7,
+    borderBottomWidth: 1,
+    borderBottomColor: "rgba(101, 112, 100, 0.18)"
+  },
+  categoryLegendHeadText: {
+    color: "#8c948b",
+    fontSize: 11,
+    fontWeight: "900"
+  },
+  categoryLegendItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    minHeight: 25
+  },
+  categoryTotalRow: {
+    marginTop: 4,
+    paddingTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: "rgba(101, 112, 100, 0.18)"
+  },
+  categoryRankSpacer: {
+    width: 20
+  },
+  categoryRankBadge: {
+    alignItems: "center",
+    justifyContent: "center",
+    width: 20,
+    height: 20,
+    borderRadius: 999
+  },
+  categoryRankText: {
+    color: "#fff",
+    fontSize: 12,
+    fontWeight: "900"
+  },
+  categoryLegendLabel: {
+    flex: 1,
+    color: "#18241b",
+    fontSize: 12,
+    fontWeight: "900"
+  },
+  categoryLegendLabelCompact: {
+    flex: 1,
+    minWidth: 0,
+    color: "#18241b",
+    fontSize: 12,
+    fontWeight: "900"
+  },
+  categoryLegendPercent: {
+    width: 34,
+    color: "#657064",
+    fontSize: 12,
+    fontWeight: "800",
+    textAlign: "center"
+  },
+  categoryLegendPercentWide: {
+    width: 46,
+    color: "#657064",
+    fontSize: 12,
+    fontWeight: "800",
+    textAlign: "right"
+  },
+  categoryLegendEnergy: {
+    width: 50,
+    color: "#657064",
+    fontSize: 12,
+    fontWeight: "800",
+    textAlign: "center"
+  },
+  categoryLegendEnergyWide: {
+    width: 74,
+    color: "#657064",
+    fontSize: 12,
+    fontWeight: "800",
+    textAlign: "center"
+  },
+  categoryLegendShareWide: {
+    width: 86,
+    color: "#657064",
+    fontSize: 12,
+    fontWeight: "800",
+    textAlign: "right"
+  },
+  categoryLegendMoodRatio: {
+    width: 62,
+    height: 12,
+    flexDirection: "row",
+    overflow: "hidden",
+    borderRadius: 999,
+    backgroundColor: "#eef1ed"
+  },
+  categoryLegendMoodRatioWide: {
+    width: 152,
+    gap: 5
+  },
+  categoryLegendMetricWide: {
+    width: 152,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6
+  },
+  categoryLegendMoodMetricWide: {
+    width: 152,
+    gap: 5
+  },
+  categoryLegendMetricHalf: {
+    flex: 1,
+    color: "#657064",
+    fontSize: 12,
+    fontWeight: "800",
+    textAlign: "right"
+  },
+  categoryLegendMetricFull: {
+    flex: 1,
+    color: "#657064",
+    fontSize: 12,
+    fontWeight: "800",
+    textAlign: "right"
+  },
+  categoryLegendMoodBar: {
+    height: 14,
+    flexDirection: "row",
+    overflow: "hidden",
+    borderRadius: 999,
+    backgroundColor: "#eef1ed"
+  },
+  categoryMoodRatioText: {
+    color: "#657064",
+    fontSize: 10,
+    fontWeight: "800",
+    textAlign: "right"
+  },
+  categoryMoodRatioSegment: {
+    height: "100%"
+  },
+  categoryLegendCount: {
+    width: 38,
+    color: "#657064",
+    fontSize: 12,
+    fontWeight: "800",
+    textAlign: "right"
+  },
+  categoryLegendCountWide: {
+    width: 48,
+    color: "#657064",
+    fontSize: 12,
+    fontWeight: "800",
+    textAlign: "right"
+  },
+  categoryLegendEmpty: {
+    color: "#657064",
+    fontSize: 13,
+    lineHeight: 19,
+    fontWeight: "800"
   },
   energyMoodBox: {
     gap: 10,
@@ -1237,12 +2117,12 @@ const styles = StyleSheet.create({
     gap: 6
   },
   keywordPill: {
-    paddingHorizontal: 9,
+    paddingHorizontal: 8,
     paddingVertical: 5,
     borderWidth: 1,
     borderRadius: 999,
     backgroundColor: "#fff",
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: "900",
     overflow: "hidden"
   },
@@ -1454,6 +2334,14 @@ const styles = StyleSheet.create({
     color: "#657064",
     fontSize: 13,
     fontWeight: "800"
+  },
+  categoryChip: {
+    paddingHorizontal: 8,
+    paddingVertical: 5,
+    borderRadius: 999,
+    fontSize: 12,
+    fontWeight: "900",
+    overflow: "hidden"
   },
   text: {
     color: "#18241b",

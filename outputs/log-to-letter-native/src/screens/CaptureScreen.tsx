@@ -80,6 +80,8 @@ const textPlaceholders = [
   "지금 나의 생각과 감정이 별로여도 괜찮아."
 ];
 
+const MAX_ENTRY_TEXT_LENGTH = 100;
+
 function randomPlaceholder() {
   return textPlaceholders[Math.floor(Math.random() * textPlaceholders.length)];
 }
@@ -203,7 +205,7 @@ export function CaptureScreen({ onAddEntry, getNow = () => new Date(), energyCol
   });
 
   const updateDraft = (next: string) => {
-    const composed = composeHangul(next);
+    const composed = [...composeHangul(next)].slice(0, MAX_ENTRY_TEXT_LENGTH).join("");
     textDraft.current = composed;
     if (composed !== next) {
       requestAnimationFrame(() => inputRef.current?.setNativeProps({ text: composed }));
@@ -214,7 +216,7 @@ export function CaptureScreen({ onAddEntry, getNow = () => new Date(), energyCol
   };
 
   const replaceInputText = (next: string) => {
-    const composed = composeHangul(next);
+    const composed = [...composeHangul(next)].slice(0, MAX_ENTRY_TEXT_LENGTH).join("");
     textDraft.current = composed;
     inputRef.current?.setNativeProps({ text: composed });
     setHasText(Boolean(composed.trim()));
@@ -231,8 +233,17 @@ export function CaptureScreen({ onAddEntry, getNow = () => new Date(), energyCol
         ref={inputRef}
         multiline
         placeholder={placeholder}
+        maxLength={MAX_ENTRY_TEXT_LENGTH}
         onChangeText={updateDraft}
-        style={styles.textarea}
+        placeholderTextColor={theme.muted}
+        style={[
+          styles.textarea,
+          {
+            borderColor: theme.border,
+            backgroundColor: theme.card,
+            color: theme.text
+          }
+        ]}
         textAlignVertical="top"
       />
 
@@ -251,37 +262,41 @@ export function CaptureScreen({ onAddEntry, getNow = () => new Date(), energyCol
         ))}
       </View>
 
-      <Text style={styles.sectionTitle}>기록 카테고리</Text>
-      <View style={styles.categoryPanel}>
-        <Text style={styles.categoryHint}>기록을 보고 먼저 골라둘게. 필요하면 바꿔줘.</Text>
+      <Text style={[styles.sectionTitle, { color: theme.text }]}>기록 카테고리</Text>
+      <View style={[styles.categoryPanel, { borderColor: theme.border, backgroundColor: theme.card }]}>
+        <Text style={[styles.categoryHint, { color: theme.muted }]}>기록을 보고 먼저 골라둘게. 필요하면 바꿔줘.</Text>
         <View style={styles.chips}>
           {entryCategoryOptions.map((option) => (
             <Pressable
               key={option.key}
-              style={[styles.chip, category === option.key && { borderColor: theme.tint, backgroundColor: theme.soft }]}
+              style={[
+                styles.chip,
+                { borderColor: theme.border, backgroundColor: theme.cardAlt },
+                category === option.key && { borderColor: theme.tint, backgroundColor: theme.soft }
+              ]}
               onPress={() => {
                 setCategory(option.key);
                 setCategoryTouched(true);
               }}
             >
-              <Text style={[styles.chipText, category === option.key && { color: theme.tint }]}>{option.label}</Text>
+              <Text style={[styles.chipText, { color: theme.muted }, category === option.key && { color: theme.tint }]}>{option.label}</Text>
             </Pressable>
           ))}
         </View>
       </View>
 
-      <Text style={styles.sectionTitle}>사용한 에너지(%)</Text>
-      <View style={styles.energyPanel}>
+      <Text style={[styles.sectionTitle, { color: theme.text }]}>사용한 에너지(%)</Text>
+      <View style={[styles.energyPanel, { borderColor: theme.border, backgroundColor: theme.card }]}>
         <View style={styles.energyHeader}>
-          <Text style={styles.energyPercent}>{energy}%</Text>
+          <Text style={[styles.energyPercent, { color: theme.text }]}>{energy}%</Text>
           <View style={styles.energyScale}>
-            <Text style={styles.energyScaleText}>적게 씀</Text>
+            <Text style={[styles.energyScaleText, { color: theme.muted }]}>적게 씀</Text>
             <View style={styles.energyScaleBar}>
-              <Text style={styles.energyScaleArrow}>←</Text>
-              <View style={styles.energyScaleLine} />
-              <Text style={styles.energyScaleArrow}>→</Text>
+              <Text style={[styles.energyScaleArrow, { color: theme.muted }]}>←</Text>
+              <View style={[styles.energyScaleLine, { backgroundColor: theme.border }]} />
+              <Text style={[styles.energyScaleArrow, { color: theme.muted }]}>→</Text>
             </View>
-            <Text style={styles.energyScaleText}>많이 씀</Text>
+            <Text style={[styles.energyScaleText, { color: theme.muted }]}>많이 씀</Text>
           </View>
         </View>
         <View
@@ -293,7 +308,7 @@ export function CaptureScreen({ onAddEntry, getNow = () => new Date(), energyCol
           }}
           {...energyPanResponder.panHandlers}
         >
-          <View style={styles.sliderTrack}>
+          <View style={[styles.sliderTrack, { backgroundColor: theme.soft }]}>
             <View
               style={[
                 styles.sliderFill,
@@ -307,7 +322,7 @@ export function CaptureScreen({ onAddEntry, getNow = () => new Date(), energyCol
           <View style={styles.sliderTicks}>
             {energyLevels.map((level) => (
               <View key={level.value} style={styles.sliderTickButton}>
-                <View style={[styles.sliderTick, energyValue >= level.value && { backgroundColor: energyLevel.color }]} />
+                <View style={[styles.sliderTick, { backgroundColor: theme.border }, energyValue >= level.value && { backgroundColor: energyLevel.color }]} />
               </View>
             ))}
           </View>
@@ -330,12 +345,12 @@ export function CaptureScreen({ onAddEntry, getNow = () => new Date(), energyCol
         </View>
         <View style={styles.sliderLabels}>
           {energyLevels.map((level) => (
-            <Text key={level.value} style={styles.sliderLabel}>{level.value}</Text>
+            <Text key={level.value} style={[styles.sliderLabel, { color: theme.muted }]}>{level.value}</Text>
           ))}
         </View>
       </View>
 
-      <Text style={styles.sectionTitle}>감정</Text>
+      <Text style={[styles.sectionTitle, { color: theme.text }]}>감정</Text>
       <MoodGroup
         title="긍정 감정"
         moods={positiveExpanded ? positiveMoods : positiveMoods.slice(0, 6)}
@@ -345,6 +360,11 @@ export function CaptureScreen({ onAddEntry, getNow = () => new Date(), energyCol
         onSelect={setMood}
         themeTint={theme.tint}
         themeSoft={theme.soft}
+        themeText={theme.text}
+        themeMuted={theme.muted}
+        themeCard={theme.card}
+        themeCardAlt={theme.cardAlt}
+        themeBorder={theme.border}
       />
       <MoodGroup
         title="중간 감정"
@@ -355,6 +375,11 @@ export function CaptureScreen({ onAddEntry, getNow = () => new Date(), energyCol
         onSelect={setMood}
         themeTint={theme.tint}
         themeSoft={theme.soft}
+        themeText={theme.text}
+        themeMuted={theme.muted}
+        themeCard={theme.card}
+        themeCardAlt={theme.cardAlt}
+        themeBorder={theme.border}
       />
       <MoodGroup
         title="부정 감정"
@@ -365,10 +390,15 @@ export function CaptureScreen({ onAddEntry, getNow = () => new Date(), energyCol
         onSelect={setMood}
         themeTint={theme.tint}
         themeSoft={theme.soft}
+        themeText={theme.text}
+        themeMuted={theme.muted}
+        themeCard={theme.card}
+        themeCardAlt={theme.cardAlt}
+        themeBorder={theme.border}
       />
 
-      <Text style={styles.formHint}>
-        {canSubmit ? "좋아, 이제 기록으로 남길 수 있어." : "생각과 감정을 남기면 기록할 수 있어. 에너지는 50%에서 조정하면 돼."}
+      <Text style={[styles.formHint, { color: theme.muted }]}>
+        기록을 채우고 감정을 선택하면 '남기기' 버튼이 활성화 돼. 사용한 에너지 조정하는 것도 잊지 마!
       </Text>
 
       <Pressable
@@ -393,7 +423,7 @@ export function CaptureScreen({ onAddEntry, getNow = () => new Date(), energyCol
           setPlaceholder(randomPlaceholder());
         }}
       >
-        <Text style={styles.submitText}>남기기</Text>
+        <Text style={[styles.submitText, { color: theme.inverseText }]}>남기기</Text>
       </Pressable>
     </Screen>
   );
@@ -407,7 +437,12 @@ function MoodGroup({
   onToggle,
   onSelect,
   themeTint,
-  themeSoft
+  themeSoft,
+  themeText,
+  themeMuted,
+  themeCard,
+  themeCardAlt,
+  themeBorder
 }: {
   title: string;
   moods: Array<{ key: Mood; label: string }>;
@@ -417,11 +452,16 @@ function MoodGroup({
   onSelect: (mood: Mood) => void;
   themeTint: string;
   themeSoft: string;
+  themeText: string;
+  themeMuted: string;
+  themeCard: string;
+  themeCardAlt: string;
+  themeBorder: string;
 }) {
   return (
-    <View style={styles.moodGroup}>
+    <View style={[styles.moodGroup, { borderColor: themeBorder, backgroundColor: themeCard }]}>
       <View style={styles.moodHeader}>
-        <Text style={styles.moodTitle}>{title}</Text>
+        <Text style={[styles.moodTitle, { color: themeText }]}>{title}</Text>
         <Pressable style={[styles.expandButton, { backgroundColor: themeSoft }]} onPress={onToggle}>
           <Text style={[styles.expandText, { color: themeTint }]}>{expanded ? "−" : "+"}</Text>
         </Pressable>
@@ -430,10 +470,14 @@ function MoodGroup({
         {moods.map((item) => (
           <Pressable
             key={item.key}
-            style={[styles.chip, selected === item.key && { borderColor: themeTint, backgroundColor: themeSoft }]}
+            style={[
+              styles.chip,
+              { borderColor: themeBorder, backgroundColor: themeCardAlt },
+              selected === item.key && { borderColor: themeTint, backgroundColor: themeSoft }
+            ]}
             onPress={() => onSelect(item.key)}
           >
-            <Text style={[styles.chipText, selected === item.key && { color: themeTint }]}>{item.label}</Text>
+            <Text style={[styles.chipText, { color: themeMuted }, selected === item.key && { color: themeTint }]}>{item.label}</Text>
           </Pressable>
         ))}
       </View>
